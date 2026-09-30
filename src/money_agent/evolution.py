@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from .broker import BrokerConfig, PaperBroker
-from .decisioners import AgentState, Decisioner, RulesDecisioner
+from .decisioners import AgentState, CallBudget, Decisioner, RulesDecisioner
 from .fitness import Episode, Fitness, evaluate, max_drawdown
 from .gates import GateConfig, Gates
 from .genome import Genome, crossover, hand_seeded, mutate, random_genome
@@ -43,6 +43,7 @@ class Config:
     decide_every: int = 3          # bars between decisions
     model: str = "offline/rules"
     cross_genome_rate: float = 0.3
+    max_calls_per_epoch: int | None = None
 
 
 @dataclass(slots=True)
@@ -103,6 +104,8 @@ def run_episode(
     capital_deployed = 0.0
     n_trades = 0
     last_fill_bar = -10**6
+    budget = getattr(decisioner, "budget", None)
+    snap = budget.snapshot() if budget else None
 
     def weight(bar: Bar) -> float:
         """Position value as a fraction of net worth. 0.0 when flat."""
@@ -172,6 +175,7 @@ def run_episode(
         n_evals=n_evals,
         turnover=broker.turnover,
         n_trades=n_trades,
+        truncated=bool(budget and budget.blocked_since(snap)),
     )
 
 
@@ -274,7 +278,16 @@ def run(cfg: Config, market: Market | None = None, decisioner: Decisioner | None
         for i in range(cfg.episodes)
     ]
 
+    budget = CallBudget(limit=cfg.max_calls_per_epoch)
+    if hasattr(decisioner, "budget"):
+        decisioner.budget = budget
+
     for gen in range(cfg.generations):
+        # Fresh budget each generation, so the cap is per-epoch rather than
+        # cumulative over the whole run.
+        budget.limit = cfg.max_calls_per_epoch
+        budget.spent = 0
+        budget.blocked = 0
         bars = windows[0]
 
         records: list[Record] = []

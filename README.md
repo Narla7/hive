@@ -136,6 +136,42 @@ out-earning the limit. A gate enforced by a model is a suggestion.
 There is a separate population-wide kill switch for systemic failure — a regime change
 makes every genome breach at once, so per-genome gates protect nothing in that case.
 
+## Probing the model path
+
+```bash
+python3 -m money_agent.cli --probe --model <id>
+```
+
+One call, then out. A full run fires thousands of calls, so without this a bad
+key or a model that returns prose instead of JSON is discovered minutes and real
+money later — or not at all, because an unparseable reply degrades to "hold
+position" and every genome quietly behaves the same. The probe makes that
+failure loud and costs nothing.
+
+Every run also reports, at the end:
+
+```
+inference: 1,728 calls  $0.31  parse_failures=0  network_errors=0
+```
+
+`parse_failures > 0` means fitness is not measuring strategy quality, and the
+CLI says so in those words. `--max-calls-per-epoch` caps model calls per
+generation; episodes that get cut off are marked truncated and **excluded** from
+fitness, because a half-length episode understates a genome that had less time
+to trade, which would bias selection toward strategies that churn fast.
+
+### Two things the probe found about OpenCode Zen
+
+- **Free models are in-app only.** `big-pickle` and every `*-free` model return
+  `FreeTierError 403` when called from an external script: *"OpenCode's free
+  tier can only be used from within OpenCode."* Not bypassable from outside.
+- **Paid models need a balance.** `402 Insufficient account funds` until Zen has
+  one. Cheapest usable are `deepseek-v4-flash` ($0.14/$0.28 per 1M) and
+  `glm-5.3-flash` ($0.15/$0.50) — roughly $0.30 for a 1,700-call trial.
+
+Also: requests must send a real `User-Agent`. Cloudflare fronts Zen and rejects
+Python's default with error 1010, "access based on your browser's signature".
+
 ## Tests
 
 ```bash

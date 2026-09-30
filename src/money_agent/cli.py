@@ -45,6 +45,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     g.add_argument("--data", default=None, help="CSV of real bars instead of simulated")
     g.add_argument("--symbol", default="SIM")
+    g.add_argument(
+        "--probe", action="store_true",
+        help="make one health-check call and exit (no key cost, ~1s)",
+    )
+    g.add_argument(
+        "--max-calls-per-epoch", type=int, default=None,
+        help="hard cap on model calls per generation; excess episodes are "
+             "marked truncated and excluded from fitness",
+    )
 
     o = p.add_argument_group("output")
     o.add_argument("--json", action="store_true", help="emit machine-readable report")
@@ -92,6 +101,31 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
+
+    # ---- probe: one call, then out ----
+    if args.probe:
+        r = decisioner.probe()
+        print(f"endpoint   {r.endpoint}")
+        print(f"model      {r.model}")
+        if r.error and r.status != 200:
+            print(f"status     FAILED")
+            print(f"error      {r.error}")
+            print("\nprobe FAILED — fix this before a real run, which fires thousands of calls.")
+            return 1
+        print(f"status     {r.status}  ({r.elapsed_ms}ms)")
+        print(f"tokens     in={r.in_tokens}  out={r.out_tokens}")
+        print(f"cost       ${r.cost:.6f}")
+        print(f"raw        {r.raw[:300]!r}")
+        if r.parsed is None:
+            print(f"parsed     FAIL ({r.error})")
+            print("\nprobe FAILED — the model answered, but not with parseable JSON.")
+            print("Fitness would silently measure nothing, so this has to be fixed first.")
+            return 1
+        print(f"parsed     {r.parsed}")
+        print(f"\nprobe OK — {r.in_tokens} in / {r.out_tokens} out tokens, ${r.cost:.6f}")
+        return 0
+
+    cfg.max_calls_per_epoch = args.max_calls_per_epoch
 
     if not args.quiet:
         print(f"model={args.model} pop={cfg.population} gens={cfg.generations} "
@@ -151,6 +185,27 @@ def main(argv: list[str] | None = None) -> int:
                 print("  >> OVERFIT: profitable in-sample, not out-of-sample")
             elif hold.ret > 0:
                 print("  >> edge survives out-of-sample")
+
+        # ---- model health, loud not silent ----
+        if hasattr(decisioner, "calls"):
+            calls, cost = decisioner.calls, decisioner.total_cost
+            pf, ne = decisioner.parse_failures, decisioner.network_errors
+            print(f"\ninference: {calls} calls  ${cost:.4f}  "
+                  f"parse_failures={pf}  network_errors={ne}")
+            if pf:
+                print(f"  >> WARNING: {pf} of {calls + pf} decisions were unparseable.")
+                print("  >> Fitness is NOT measuring strategy quality. Fix the prompt")
+                print("  >> or the parser before trusting any number above.")
+            if ne:
+                print(f"  >> WARNING: {ne} network errors. Results are partial.")
+            if calls == 0 and not (args.no_holdout and not calls):
+                print("  >> WARNING: zero model calls were made. Check --model.")
+
+        # ---- truncation, which biases fitness if ignored ----
+        dropped = sum(r.best.fitness.n_truncated for r in reports)
+        if dropped:
+            print(f"\n>> {dropped} episode(s) hit --max-calls-per-epoch and were")
+            print(">> excluded from fitness. The verdict above is degraded.")
         print(f"best genome: {best.id}")
         print("  policy:", json.dumps(best.to_dict()["policy"], indent=2).replace("\n", "\n  "))
         if hasattr(decisioner, "total_cost"):

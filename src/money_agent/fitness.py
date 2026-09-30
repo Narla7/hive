@@ -44,6 +44,7 @@ class Episode:
     n_evals: int
     turnover: float
     n_trades: int = 0
+    truncated: bool = False     # call budget ran out mid-episode
     error: str | None = None
 
 
@@ -59,6 +60,7 @@ class Fitness:
     n: int
     n_eff: float
     trades: int = 0
+    n_truncated: int = 0
 
     @property
     def shrinked(self) -> bool:
@@ -116,10 +118,16 @@ def downside_dev(values: list[float], floor: float = MIN_DOWNSIDE_DEV) -> float:
 
 def evaluate(episodes: list[Episode], initial_cash: float) -> Fitness:
     """Score a genome across its episode history."""
-    ok = [e for e in episodes if e.error is None]
+    # Truncated episodes are excluded, not merely flagged. A half-length episode
+    # understates a genome because it had less time to trade, so scoring it
+    # would bias selection toward strategies that churn fast.
+    n_truncated = sum(1 for e in episodes if e.truncated and e.error is None)
+    ok = [e for e in episodes if e.error is None and not e.truncated]
     n = len(ok)
     if n == 0:
-        return Fitness(0.0, 0.0, 0.0, 0.0, 0.0, EPS, 0.0, 0, 0.0, 0)
+        # Still report truncation, otherwise "everything was truncated" is
+        # indistinguishable from "nothing ran".
+        return Fitness(0.0, 0.0, 0.0, 0.0, 0.0, EPS, 0.0, 0, 0.0, 0, n_truncated)
 
     # Return on account equity, not on deployed capital. Normalizing by
     # deployed capital deflates every high-turnover strategy and hides the fact
@@ -165,5 +173,5 @@ def evaluate(episodes: list[Episode], initial_cash: float) -> Fitness:
     return Fitness(
         raw=raw, fitness=fitness, ret=ret, cost_per_eval=cost_per_eval,
         drawdown=dd, downside_dev=ddev, turnover=turnover, n=n, n_eff=n_eff,
-        trades=trades,
+        trades=trades, n_truncated=n_truncated,
     )
