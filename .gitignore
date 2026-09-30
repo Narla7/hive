@@ -4,7 +4,9 @@ __pycache__/
 venv/
 .env
 runs/
+# The committed dataset is the point of --data; other CSVs are not.
 data/*.csv
+!data/progeny-1min.csv
 .pytest_cache/
 *.egg-info/
 dist/
