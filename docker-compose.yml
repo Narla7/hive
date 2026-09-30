@@ -1,0 +1,21 @@
+services:
+  evolve:
+    build: .
+    image: money-agent:latest
+    # Override the command for a quick run, e.g.
+    #   docker compose run --rm evolve --generations 4 --quiet
+    command: ["--population", "16", "--generations", "12", "--episodes", "6"]
+    environment:
+      # Only needed when --model is not offline/rules.
+      MA_API_KEY: "${MA_API_KEY:-}"
+      MA_BASE_URL: "${MA_BASE_URL:-https://openrouter.ai/api/v1}"
+    volumes:
+      - ./runs:/app/runs
+    # Uncomment to attach a real market-data file.
+    # - ./data:/app/data:ro
+
+  test:
+    build: .
+    image: money-agent:latest
+    entrypoint: ["python", "-m", "unittest", "discover", "-s", "tests", "-t", "."]
+    command: []

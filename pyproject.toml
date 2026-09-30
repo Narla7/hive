@@ -1,0 +1,19 @@
+[project]
+name = "money-agent"
+version = "0.1.0"
+description = "Evolutionary harness for day-trading agents. Fitness is realized net P&L."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+money-agent = "money_agent.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

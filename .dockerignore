@@ -1,0 +1,9 @@
+.git
+.github
+runs
+data
+*.md
+.env
+__pycache__
+*.pyc
+.venv
