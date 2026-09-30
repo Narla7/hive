@@ -20,6 +20,7 @@ from . import render, theme
 from .broker import BrokerConfig
 from .decisioners import LLMDecisioner, RulesDecisioner
 from .evolution import Config, holdout as run_holdout, run as run_evolution
+from .sessions import plan_from_config
 from .gates import GateConfig
 from .market import FileMarket, SimulatedMarket
 
@@ -253,10 +254,12 @@ def run_tui(cfg: Config, model: str, api_key: str | None, base_url: str | None,
             _reports, best = result["out"]
             state.holdout = "consulting the other market..."
             _draw(stdscr, state, flicker)
-            h = run_holdout(best, cfg, decisioner,
-                            market_seed=cfg.market_seed + 9999, n_windows=5,
-                            symbol=symbol,
-                            market=None if data else market)
+            plan = plan_from_config(
+                cfg.generations, cfg.episodes, cfg.holdout_windows,
+                cfg.reselect_windows, cfg.reselect_final_windows,
+                cfg.episode_spacing)
+            h = run_holdout(best, cfg, decisioner, market, symbol,
+                            market.sessions(symbol), plan.holdout, plan.spacing)
             verdict = "it survives" if h.ret > 0 else "it does not survive"
             state.holdout = f"holdout {h.ret:+.2%} -- {verdict}"
             state.holdout_done = True

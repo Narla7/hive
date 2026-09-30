@@ -7,7 +7,7 @@
 |_|  |_|_____|   \/   |______|
 ```
 
-# HIVE
+# PROGENY
 
 An evolutionary harness for day-trading agents. **Fitness is realized net P&L from a
 double-entry ledger.** A population of strategy genomes trades the same price windows,
@@ -16,13 +16,13 @@ population is scored again. At the end, one market nobody trained on decides whe
 the winner is real.
 
 ```bash
-PYTHONPATH=src python3 -m hive.cli --population 16 --generations 12 --episodes 6
+PYTHONPATH=src python3 -m progeny.cli --population 16 --generations 12 --episodes 6
 ```
 
 No API key. No network. No dependencies. Python 3.11+ and the standard library.
 
 > **Version:** 0.1.0 · **Branch:** `tui` · **Python:** ≥ 3.11 · **Dependencies:** none ·
-> **Repo:** https://github.com/Narla7/hive (private) · **Image:** `hive:latest`
+> **Repo:** https://github.com/Narla7/progeny (private) · **Image:** `progeny:latest`
 
 ---
 
@@ -106,7 +106,7 @@ Python 3.14.7
 A 7-second smoke test, small enough to read end to end:
 
 ```bash
-$ PYTHONPATH=src python3 -m hive.cli --population 8 --generations 4 --episodes 3
+$ PYTHONPATH=src python3 -m progeny.cli --population 8 --generations 4 --episodes 3
 model=offline/rules pop=8 gens=4 episodes=3 bars=720 cash=10,000
 ------------------------------------------------------------------------------
 gen  0  mean_fitness   -0.1775  best a8c6f5909f4c raw  12.5578 -> shrunk   4.1859  ret +10.898%  dd 3.4%  cost/eval 0.0000  n_eff 3.0  new 5
@@ -154,7 +154,7 @@ Read [Honest limits on the numbers](#honest-limits-on-the-numbers) before quotin
 Full-screen dashboard, if you have a terminal:
 
 ```bash
-PYTHONPATH=src python3 -m hive.cli --tui
+PYTHONPATH=src python3 -m progeny.cli --tui
 ```
 
 ---
@@ -171,7 +171,7 @@ PYTHONPATH=src python3 -m hive.cli --tui
 | Docker | any | Only for `docker compose`; the image is `python:3.14-slim` | `docker --version` |
 
 Confirmed: `pyproject.toml` declares `requires-python = ">=3.11"`, `dependencies = []`,
-and `[project.scripts] hive = "hive.cli:main"`. The Docker image is
+and `[project.scripts] progeny = "progeny.cli:main"`. The Docker image is
 `python:3.14-slim`, stdlib-only, running as a non-root user named `agent`.
 
 ---
@@ -182,28 +182,28 @@ and `[project.scripts] hive = "hive.cli:main"`. The Docker image is
 tests and the Docker image both run:
 
 ```bash
-PYTHONPATH=src python3 -m hive.cli --help
+PYTHONPATH=src python3 -m progeny.cli --help
 PYTHONPATH=src python3 -m unittest discover -s tests -t .
 ```
 
-**Console script — if you want `hive` on your PATH:**
+**Console script — if you want `progeny` on your PATH:**
 
 ```bash
 $ python3 -m venv .venv && . .venv/bin/activate
 $ pip install -e .
-$ hive --help
-usage: hive [-h] [--population POPULATION] [--generations GENERATIONS] ...
-$ python -c "import hive; print(hive.__version__)"
+$ progeny --help
+usage: progeny [-h] [--population POPULATION] [--generations GENERATIONS] ...
+$ python -c "import progeny; print(progeny.__version__)"
 0.1.0
 ```
 
-Verified: a clean venv install produces a working `hive` console script that imports
+Verified: a clean venv install produces a working `progeny` console script that imports
 the same package and prints `0.1.0`.
 
 **Docker:**
 
 ```bash
-docker compose build          # tags hive:latest
+docker compose build          # tags progeny:latest
 docker compose run --rm test
 docker compose run --rm evolve
 ```
@@ -211,9 +211,9 @@ docker compose run --rm evolve
 **Running it as a library:**
 
 ```python
-from hive import Config, SimulatedMarket, GateConfig, run   # re-exported from hive/__init__.py
-from hive.decisioners import RulesDecisioner                  # not re-exported
-from hive.evolution import holdout                           # not re-exported
+from progeny import Config, SimulatedMarket, GateConfig, run   # re-exported from progeny/__init__.py
+from progeny.decisioners import RulesDecisioner                  # not re-exported
+from progeny.evolution import holdout                           # not re-exported
 
 cfg = Config(population=12, generations=8, episodes=3, bars=720, market_seed=1234)
 reports, best = run(cfg, market=SimulatedMarket(seed=1234),
@@ -230,11 +230,11 @@ $ PYTHONPATH=src python3 example.py
 out-of-sample +24.30% over 5 unseen windows, 107 trades
 ```
 
-`hive/__init__.py` re-exports `BrokerConfig`, `PaperBroker`, `Config`, `run`,
+`progeny/__init__.py` re-exports `BrokerConfig`, `PaperBroker`, `Config`, `run`,
 `Episode`, `Fitness`, `evaluate`, `GateConfig`, `Gates`, `Genome`, `Policy`,
 `hand_seeded`, `mutate`, `crossover`, `Ledger`, `Bar`, `SimulatedMarket`,
 `FileMarket`. `RulesDecisioner`, `LLMDecisioner` and `holdout` are not in that list —
-import them from `hive.decisioners` and `hive.evolution`.
+import them from `progeny.decisioners` and `progeny.evolution`.
 
 ---
 
@@ -372,7 +372,7 @@ exactly the protection being sought.
 `--json` emits the same thing machine-readably:
 
 ```bash
-PYTHONPATH=src python3 -m hive.cli --population 6 --generations 3 --episodes 2 \
+PYTHONPATH=src python3 -m progeny.cli --population 6 --generations 3 --episodes 2 \
     --quiet --no-holdout --json
 ```
 ```json
@@ -499,7 +499,7 @@ about markets.
 | `tui.py` | 303 | Curses driver. Worker thread + `Control` flags. The only file that imports `curses` |
 | `cli.py` | 266 | `argparse`, report formatting, `--probe`, `--json`, `--out`, `--tui` dispatch |
 
-3,884 lines total: 2,855 in `src/hive/`, 1,029 in `tests/`.
+3,884 lines total: 2,855 in `src/progeny/`, 1,029 in `tests/`.
 
 Three interfaces, each deliberately narrow:
 
@@ -530,7 +530,7 @@ to it. The three-way ordering, straight from the module:
 
 ```console
 $ PYTHONPATH=src python3 -c '
-import hive.fitness as F
+import progeny.fitness as F
 ep = lambda pnl, t: F.Episode(pnl=pnl, equity_curve=[10000.0, 10000.0+pnl],
                               capital_deployed=10000.0, inference_cost=0.0,
                               n_evals=10, turnover=5.0, n_trades=t)
@@ -682,7 +682,7 @@ a quarantined id still appears in `mean_fitness` and in the quarantine list. Ver
 with a deliberately tight cap:
 
 ```bash
-$ PYTHONPATH=src python3 -m hive.cli --population 6 --generations 3 --episodes 2 --max-drawdown 0.01
+$ PYTHONPATH=src python3 -m progeny.cli --population 6 --generations 3 --episodes 2 --max-drawdown 0.01
 gen  0  mean_fitness   -3.1042  best 8f74e0d29d38 raw   4.2983 -> shrunk  1.0746  ret +3.910%  dd 1.3%  cost/eval 0.0000  n_eff 2.0  new 3
         quarantined: 35ab66ec8f9a, 8f74e0d29d38, 986e4d30f80d, afcf02b78f30, b7a7fa1e6dba, f170d1056d25
 gen  1  mean_fitness   -1.8054  best b7a7fa1e6dba raw   1.7847 -> shrunk  0.4462  ret +3.843%  dd 2.1%  cost/eval 0.0000  n_eff 2.0  new 5
@@ -701,7 +701,7 @@ that does not balance:
 ```console
 $ PYTHONPATH=src python3 -c "
 from datetime import datetime
-from hive.ledger import Ledger, Posting, CASH, POSITION
+from progeny.ledger import Ledger, Posting, CASH, POSITION
 led = Ledger()
 try:
     led.post(datetime(2026,1,5,14,30), 'fill', 'SIM', [Posting(CASH,-1000.0), Posting(POSITION,990.0)])
@@ -720,7 +720,7 @@ without that third posting the entry is unbalanced and the ledger refuses it. Te
 ## The TUI
 
 ```bash
-PYTHONPATH=src python3 -m hive.cli --tui
+PYTHONPATH=src python3 -m progeny.cli --tui
 ```
 
 Full-screen curses dashboard. Rendered frame at 100×40 with real numbers from the
@@ -816,8 +816,8 @@ Optional. `RulesDecisioner` is the default and the reason the harness can be run
 tested anywhere.
 
 ```bash
-export HIVE_API_KEY=sk-...
-PYTHONPATH=src python3 -m hive.cli --model anthropic/claude-sonnet \
+export PROGENY_API_KEY=sk-...
+PYTHONPATH=src python3 -m progeny.cli --model anthropic/claude-sonnet \
     --base-url https://openrouter.ai/api/v1 --population 8 --generations 5
 ```
 
@@ -827,7 +827,7 @@ PYTHONPATH=src python3 -m hive.cli --model anthropic/claude-sonnet \
 ```
 POST {base_url}/chat/completions          (or {base_url}/v1/messages for anthropic)
 Authorization: Bearer {key}               (or x-api-key + anthropic-version: 2023-06-01)
-User-Agent: hive/0.1 (+https://github.com/Narla7/hive)
+User-Agent: progeny/0.1 (+https://github.com/Narla7/progeny)
 Content-Type: application/json
 
 {"model": ..., "messages": [system, user], "temperature": 0.0, "seed": 0}
@@ -841,8 +841,8 @@ prose still gets counted as a failure rather than silently holding position.
 ### Probe first, always
 
 ```bash
-$ PYTHONPATH=src python3 -m hive.cli --probe --model big-pickle --base-url https://opencode.ai/zen/v1
-error: no API key: set HIVE_API_KEY, OPENROUTER_API_KEY or OPENCODE_API_KEY, or pass --api-key. Use --model offline/rules to run with no key at all.
+$ PYTHONPATH=src python3 -m progeny.cli --probe --model big-pickle --base-url https://opencode.ai/zen/v1
+error: no API key: set PROGENY_API_KEY, OPENROUTER_API_KEY or OPENCODE_API_KEY, or pass --api-key. Use --model offline/rules to run with no key at all.
 $ echo $?
 2
 ```
@@ -879,7 +879,7 @@ it from fitness. Genuine output, from a real run against a stubbed endpoint with
 `--max-calls-per-epoch 900`:
 
 ```console
-$ PYTHONPATH=src python3 -m hive.cli --model stub/flash --base-url https://example.invalid/v1 \
+$ PYTHONPATH=src python3 -m progeny.cli --model stub/flash --base-url https://example.invalid/v1 \
     --population 4 --generations 2 --episodes 2 --no-holdout --max-calls-per-epoch 900
 model=stub/flash pop=4 gens=2 episodes=2 bars=720 cash=10,000
 ------------------------------------------------------------------------------
@@ -946,7 +946,7 @@ later.
 - **A real `User-Agent` is mandatory.** Cloudflare fronts Zen and rejects Python's
   default `Python-urllib/x.y` with error 1010, *"access based on your browser's
   signature"*. The client identifies honestly rather than impersonating a browser:
-  `USER_AGENT = "hive/0.1 (+https://github.com/Narla7/hive)"`.
+  `USER_AGENT = "progeny/0.1 (+https://github.com/Narla7/progeny)"`.
 
 **OpenCode Go's subscription is rate-capped per rolling window and is unsuitable for
 this workload.** It is for dev and CI.
@@ -962,12 +962,12 @@ this workload.** It is for dev and CI.
 
 | Variable | Used for | Notes |
 | --- | --- | --- |
-| `HIVE_API_KEY` | LLM auth | `MA_API_KEY` still read as a fallback, so pre-rename `.env` files keep working |
-| `HIVE_BASE_URL` | LLM endpoint | Defaults to `https://openrouter.ai/api/v1` |
-| `OPENROUTER_API_KEY` | LLM auth | Checked after `HIVE_API_KEY` |
+| `PROGENY_API_KEY` | LLM auth | `MA_API_KEY` still read as a fallback, so pre-rename `.env` files keep working |
+| `PROGENY_BASE_URL` | LLM endpoint | Defaults to `https://openrouter.ai/api/v1` |
+| `OPENROUTER_API_KEY` | LLM auth | Checked after `PROGENY_API_KEY` |
 | `OPENCODE_API_KEY` | LLM auth | Checked last |
 
-Resolution order in `LLMDecisioner.__init__`: `--api-key` → `HIVE_API_KEY` →
+Resolution order in `LLMDecisioner.__init__`: `--api-key` → `PROGENY_API_KEY` →
 `OPENROUTER_API_KEY` → `OPENCODE_API_KEY`. No key at all raises `ValueError` and the
 CLI exits `2`.
 
@@ -975,7 +975,7 @@ CLI exits `2`.
 
 ## CLI reference
 
-`prog="hive"`. Three argument groups. Every default below is from `build_parser()`.
+`prog="progeny"`. Three argument groups. Every default below is from `build_parser()`.
 
 ### Loop shape
 
@@ -999,8 +999,8 @@ CLI exits `2`.
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--model MODEL` | `offline/rules` | `'offline/rules'` (no key) or any model id on an OpenAI-compatible endpoint. `rules` and `none` are also accepted |
-| `--base-url BASE_URL` | `None` | e.g. `https://opencode.ai/zen/v1`. Falls back to `HIVE_BASE_URL`, then OpenRouter |
-| `--api-key API_KEY` | `None` | Or set `HIVE_API_KEY` |
+| `--base-url BASE_URL` | `None` | e.g. `https://opencode.ai/zen/v1`. Falls back to `PROGENY_BASE_URL`, then OpenRouter |
+| `--api-key API_KEY` | `None` | Or set `PROGENY_API_KEY` |
 | `--provider {openai,anthropic}` | `openai` | Wire format |
 | `--data DATA` | `None` | CSV of real bars instead of simulated |
 | `--symbol SYMBOL` | `SIM` | **Currently a no-op** — see [Real bar data](#real-bar-data) |
@@ -1044,7 +1044,7 @@ Python:
 ## Real bar data
 
 ```bash
-PYTHONPATH=src python3 -m hive.cli --data data/spy.csv
+PYTHONPATH=src python3 -m progeny.cli --data data/spy.csv
 ```
 
 CSV, one row per bar, ISO-8601 timestamps. Note the `symbol` column value and the
@@ -1068,7 +1068,7 @@ one file are fine — it groups by the `symbol` column.
 takes the inactivity penalty, and the run reports this:
 
 ```
-$ PYTHONPATH=src python3 -m hive.cli --data spy.csv --symbol SPY --population 4 --generations 2 --episodes 2
+$ PYTHONPATH=src python3 -m progeny.cli --data spy.csv --symbol SPY --population 4 --generations 2 --episodes 2
 gen  0  mean_fitness   -0.3750  best 35ab66ec8f9a raw  -1.5000 -> shrunk  -0.3750  ret +0.000%  dd 0.0%  cost/eval 0.0000  n_eff 2.0  new 2
 gen  1  mean_fitness   -0.3750  best 35ab66ec8f9a raw  -1.5000 -> shrunk  -0.3750  ret +0.000%  dd 0.0%  cost/eval 0.0000  n_eff 2.0  new 2
 ------------------------------------------------------------------------------
@@ -1109,7 +1109,7 @@ repository and it is listed again in [Known limitations](#known-limitations).
 ## Docker
 
 ```bash
-docker compose build                     # tags hive:latest
+docker compose build                     # tags progeny:latest
 docker compose run --rm test             # 129 tests
 docker compose run --rm evolve           # the default 16/12/6 run
 ```
@@ -1122,8 +1122,8 @@ docker compose run --rm evolve --generations 4 --quiet
 
 | Service | Entry point | Default command | Image |
 | --- | --- | --- | --- |
-| `evolve` | `python -m hive.cli` | `--population 16 --generations 12 --episodes 6` | `hive:latest` |
-| `test` | `python -m unittest discover -s tests -t .` | — | `hive:latest` |
+| `evolve` | `python -m progeny.cli` | `--population 16 --generations 12 --episodes 6` | `progeny:latest` |
+| `test` | `python -m unittest discover -s tests -t .` | — | `progeny:latest` |
 
 Verified: `docker compose run --rm test` reports `Ran 129 tests in 5.342s` / `OK`.
 
@@ -1138,8 +1138,8 @@ The TUI needs a real terminal, so run it without `-d`:
 docker compose run --rm evolve --tui
 ```
 
-`.env.example` documents every endpoint. The compose file passes `HIVE_API_KEY` and
-`HIVE_BASE_URL` through, and mounts `./runs:/app/runs` — note that **nothing in the code
+`.env.example` documents every endpoint. The compose file passes `PROGENY_API_KEY` and
+`PROGENY_BASE_URL` through, and mounts `./runs:/app/runs` — note that **nothing in the code
 actually writes to `runs/`**; `--out DIR` is the only thing that writes to disk. Attach
 a data file by uncommenting the `./data:/app/data:ro` mount.
 
@@ -1185,13 +1185,13 @@ OK
 ## Project structure
 
 ```
-hive/
-├── pyproject.toml            name=hive, version 0.1.0, requires-python >=3.11, dependencies=[]
-│                             [project.scripts] hive = "hive.cli:main"
-├── Dockerfile                python:3.14-slim, non-root user `agent`, ENTRYPOINT python -m hive.cli
-├── docker-compose.yml        services `evolve` and `test`, both on image hive:latest
+progeny/
+├── pyproject.toml            name=progeny, version 0.1.0, requires-python >=3.11, dependencies=[]
+│                             [project.scripts] progeny = "progeny.cli:main"
+├── Dockerfile                python:3.14-slim, non-root user `agent`, ENTRYPOINT python -m progeny.cli
+├── docker-compose.yml        services `evolve` and `test`, both on image progeny:latest
 ├── .env.example              every endpoint, and the four Zen/Go/Codex/Claude gotchas
-├── src/hive/
+├── src/progeny/
 │   ├── __init__.py           __version__ = "0.1.0"; re-exports the public API
 │   ├── market.py             Bar, Market, SimulatedMarket, FileMarket
 │   ├── broker.py             BrokerConfig, Fill, PaperBroker
@@ -1220,14 +1220,14 @@ private.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `ModuleNotFoundError: No module named 'hive'` | Ran from the repo root without `PYTHONPATH` | `PYTHONPATH=src python3 -m hive.cli …`, or `pip install -e .` |
+| `ModuleNotFoundError: No module named 'progeny'` | Ran from the repo root without `PYTHONPATH` | `PYTHONPATH=src python3 -m progeny.cli …`, or `pip install -e .` |
 | Every genome pinned at `raw = -1.5000`, `ret +0.000%` | CSV `symbol` column is not `SIM`, or the file does not cover the hardcoded 2026-01-05T14:30 window | See [Real bar data](#real-bar-data). `raw = -1.5` is the inactivity penalty with zero bars |
 | `error: --tui needs a real terminal` (exit 2) | `--tui` under a pipe, a CI job, or a detached shell | Run it directly, or drop `--tui` for the text report |
 | `terminal too small` in the TUI | Fewer than 40 columns or 8 rows | Enlarge, or use the text report |
-| `error: no API key: set HIVE_API_KEY, OPENROUTER_API_KEY or OPENCODE_API_KEY…` (exit 2) | `--model <id>` with no key in the environment or on the command line | Export the key, or use `--model offline/rules` |
+| `error: no API key: set PROGENY_API_KEY, OPENROUTER_API_KEY or OPENCODE_API_KEY…` (exit 2) | `--model <id>` with no key in the environment or on the command line | Export the key, or use `--model offline/rules` |
 | `HTTP 403: … FreeTierError` from the probe | OpenCode Zen free model called from outside OpenCode | Use a paid Zen model, or another provider |
 | `HTTP 402: Insufficient account funds` | Zen account balance is zero | Top up. `deepseek-v4-flash` / `glm-5.3-flash` are the cheapest |
-| `HTTP 403 … error 1010` / "browser's signature" | Cloudflare rejecting the default Python User-Agent | Not a config problem — the client already sends `hive/0.1 (+https://github.com/Narla7/hive)`. If you forked, keep a real `User-Agent` |
+| `HTTP 403 … error 1010` / "browser's signature" | Cloudflare rejecting the default Python User-Agent | Not a config problem — the client already sends `progeny/0.1 (+https://github.com/Narla7/progeny)`. If you forked, keep a real `User-Agent` |
 | `parse_failures=N` in the report | The model is not returning the requested JSON | The prompt asks for a single JSON object. Check `raw` from `--probe`; a chatty model still parses if it contains braces |
 | `>> 4 episode(s) hit --max-calls-per-epoch` | The per-generation call cap was reached | Raise `--max-calls-per-epoch`, shrink `--population`, or accept that the verdict is degraded. Affected genomes show `raw 0.0000` and `n_eff 0.0` |
 | `--max-calls-per-epoch` appears to do nothing | Running `offline/rules`, which has no call budget | It only applies to `LLMDecisioner` |
@@ -1317,9 +1317,9 @@ a pure function specifically so this stays true.
 
 ### The rename, and one compatibility shim
 
-The rename from `money-agent` to `hive` is complete: package `hive`, module `hive.cli`,
-console script `hive`, Docker image `hive:latest`, environment variables `HIVE_API_KEY` and
-`HIVE_BASE_URL`, and a `User-Agent` of `hive/0.1 (+https://github.com/Narla7/hive)`.
+The rename from `money-agent` to `progeny` is complete: package `progeny`, module `progeny.cli`,
+console script `progeny`, Docker image `progeny:latest`, environment variables `PROGENY_API_KEY` and
+`PROGENY_BASE_URL`, and a `User-Agent` of `progeny/0.1 (+https://github.com/Narla7/progeny)`.
 
 The single exception is deliberate: `MA_API_KEY` and `MA_BASE_URL` are still read as
 fallbacks, because a pre-rename `.env` that silently stopped working would be a nasty

@@ -9,9 +9,9 @@ import random
 import threading
 import unittest
 
-from hive import render, theme
-from hive.render import TuiState, build_frame
-from hive.tui import Control, _roster_from
+from progeny import render, theme
+from progeny.render import TuiState, build_frame
+from progeny.tui import Control, _roster_from
 
 
 def rows_to_text(frame):
@@ -283,13 +283,14 @@ class TestTheme(unittest.TestCase):
         self.assertEqual(f.step(), first)  # gap not elapsed, so unchanged
 
     def test_art_fits_short_terminal(self):
-        # The HIVE banner is 5 rows, so it fits even a 24-row window. A 3-row
+        # The PROGENY banner is 5 rows, so it fits even a 24-row window. A 3-row
         # compact variant exists for the genuinely cramped case.
         self.assertLessEqual(len(theme.art_lines(24)), 6)
-        self.assertGreater(len(theme.art_lines(60)), 3)
+        self.assertGreater(len(theme.art_lines(60)),
+                           len(theme.art_lines(6)))
 
     def test_art_shrinks_when_cramped(self):
-        self.assertEqual(len(theme.art_lines(6)), 3)
+        self.assertEqual(len(theme.art_lines(6)), len(theme.SIGIL_COMPACT.strip("\n").splitlines()))
 
     def test_ritual_lines_exist(self):
         rng = random.Random(1)

@@ -9,7 +9,7 @@ import unittest
 import urllib.error
 from unittest import mock
 
-from hive.decisioners import (
+from progeny.decisioners import (
     AgentState,
     CallBudget,
     Decision,
@@ -18,9 +18,10 @@ from hive.decisioners import (
     _probe_bars,
     build_decider,
 )
-from hive.evolution import Config, run
-from hive.fitness import Episode, evaluate
-from hive.genome import Genome
+from progeny.evolution import Config, run
+from tests.support import market_for, small_cfg
+from progeny.fitness import Episode, evaluate
+from progeny.genome import Genome
 
 GOOD = json.dumps({"target_weight": 0.42, "reason": "momentum entry"})
 PROSE = "I think the market looks bullish so maybe go long, not sure though."
@@ -313,7 +314,7 @@ class TestTruncatedEpisodes(unittest.TestCase):
 class TestBuildDecisioner(unittest.TestCase):
     def test_offline_needs_no_key(self):
         import os
-        for k in ("HIVE_API_KEY", "OPENROUTER_API_KEY", "OPENCODE_API_KEY"):
+        for k in ("PROGENY_API_KEY", "OPENROUTER_API_KEY", "OPENCODE_API_KEY"):
             os.environ.pop(k, None)
         self.assertIsInstance(build_decider("offline/rules"), RulesDecisioner)
         for alias in ("rules", "none"):
@@ -329,8 +330,8 @@ class TestBudgetThroughLoop(unittest.TestCase):
     """End-to-end: a tiny LLM cap must truncate, not silently half-run."""
     def test_cap_truncates_and_excludes(self):
         d = make()
-        cfg = Config(population=3, generations=2, episodes=2, bars=60, decide_every=3,
-                     max_calls_per_epoch=5)
+        cfg = small_cfg(population=3, generations=2, episodes=2, decide_every=3,
+                        max_calls_per_epoch=5)
         pages = {"n": 0}
 
         def fake(req, **kw):
@@ -346,9 +347,9 @@ class TestBudgetThroughLoop(unittest.TestCase):
 
     def test_no_cap_means_no_truncation(self):
         d = make()
-        cfg = Config(population=2, generations=1, episodes=1, bars=60, decide_every=3)
+        cfg = small_cfg(population=2, generations=1, episodes=1, decide_every=3)
         with mock.patch("urllib.request.urlopen", return_value=_resp(chat_payload(GOOD))):
-            reports, _ = run(cfg, decisioner=d)
+            reports, _ = run(cfg, decisioner=d, market=market_for(cfg))
         self.assertEqual(sum(r.best.fitness.n_truncated for r in reports), 0)
 
 

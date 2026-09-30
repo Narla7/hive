@@ -54,20 +54,20 @@ def init_pairs() -> None:
 
 
 SIGIL = r"""
-    __  _______    ________
-   / / / /  _/ |  / / ____/
-  / /_/ // / | | / / __/
- / __  // /  | |/ / /___
-/_/ /_/___/  |___/_____/
-
+    ____  ____  ____  _____________   ____  __
+   / __ \/ __ \/ __ \/ ____/ ____/ | / /\ \/ /
+  / /_/ / /_/ / / / / / __/ __/ /  |/ /  \  /
+ / ____/ _, _/ /_/ / /_/ / /___/ /|  /   / /
+/_/   /_/ |_|\____/\____/_____/_/ |_/   /_/
 """
 
 # Used when the terminal is too short for the full sigil. Terminals vary a lot,
 # and a 24-row window with a 14-row banner leaves no room for actual data.
 SIGIL_COMPACT = r"""
- __  _______    ________
-/ / / /  _/ |  / / ____/
-/_/ /_/___/  |___/_____/
+  ____  ____  ____    selection
+ / __ \/ __ \/ __ \      picks
+/ /_/ / /_/ / / /_/     the fitter
+\____/\____/\____/     survive
 """
 
 GLITCH_CHARS = "▓▒░█▚▞/\\|_-=+*#@$%&"
@@ -75,46 +75,26 @@ GLITCH_CHARS = "▓▒░█▚▞/\\|_-=+*#@$%&"
 # Lines the loop narrates. Chosen to be funny-ominous rather than actually
 # frightening; the numbers underneath are the real content.
 RITUAL_LINES = [
-    "the chamber wakes",
-    "the hive stirs",
-    "a new queen is born",
-    "the drones begin to hum",
-    "something is listening in the comb",
-    "the queen is laying eggs",
-    "the swarm grows restless",
-    "it has been trading all along",
+    "the rite begins",
+    "selection pressure rises",
+    "a mutation takes hold",
+    "the weak are culled",
+    "something is adapting",
+    "the lineage forks",
+    "ten thousand generations of this",
+    "the fitter survive. that is the whole idea.",
     "do not let it notice the cap",
-    "the honey is money",
-    "one drone did not come back",
-    "the queen wants more",
-    "you are inside the hive now",
-    "the walls are comb",
-    "it learned your thresholds",
-    "the ledger is sticky",
-    "it is almost profitable",
-    "wasp. it was a wasp.",
-    "the drawdown is a throat",
-    "stop looking at the exit",
-    "the chamber seals",
-    "something is listening",
-    "the ledger accepts another name",
-    "breath held. do not look away.",
-    "a shape resolves in the dark",
-    "the floor is wet. that is fine.",
-    "it has been trading all along",
-    "do not let it notice the cap",
-    "the numbers move on their own now",
-    "something in the walls is counting too",
-    "you can hear the fills",
+    "variation is not optional",
+    "one child did not survive",
+    "the population drifts",
+    "you are inside the fitness function now",
+    "every fill is a gene",
     "it learned your thresholds",
     "the drawdown is a throat",
     "stop looking at the exit",
-    "one more generation",
     "it is almost profitable",
     "the eyes are on the ledger",
-    "you have been here before",
-    "the slippage smells wrong",
-    "it remembers the seed",
+    "the chamber seals",
 ]
 
 FAIL_LINES = [

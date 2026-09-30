@@ -1,4 +1,4 @@
-"""HIVE: an evolutionary harness for day-trading agents.
+"""PROGENY: an evolutionary harness for day-trading agents.
 
 Fitness is realized net P&L from a double-entry ledger. The model proposes
 actions; the gates and the broker decide what actually happens.

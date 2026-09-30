@@ -8,13 +8,15 @@ produce a *worse* winner.
 import unittest
 from datetime import datetime, timedelta
 
-import hive.evolution as evo
-from hive.decisioners import RulesDecisioner
-from hive.evolution import Config, allocate, holdout, reselect, run, windows_for_gen
-from hive.fitness import Episode, Fitness, evaluate
-from hive.gates import GateConfig, Gates
-from hive.genome import Genome, Policy, hand_seeded
-from hive.market import SimulatedMarket
+import progeny.evolution as evo
+from progeny.decisioners import RulesDecisioner
+from progeny.evolution import Config, allocate, holdout, reselect, run, windows_for_gen
+from progeny.fitness import Episode, Fitness, evaluate
+from progeny.gates import GateConfig, Gates
+from progeny.genome import Genome, Policy, hand_seeded
+from progeny.market import SimulatedMarket
+from progeny.sessions import SessionPlan, plan_from_config
+from tests.support import market_for, sessions_for, small_cfg
 
 TS = datetime(2026, 1, 5, 14, 30)
 
@@ -135,14 +137,20 @@ class TestWindowRotation(unittest.TestCase):
     again -- and lets the search converge on fitting those particular paths.
     """
 
-    def _blocks(self, gens=4, episodes=3):
-        cfg = Config(population=6, generations=gens, episodes=episodes,
-                     bars=100, episode_spacing=900)
-        m = SimulatedMarket(seed=1234)
-        return cfg, [windows_for_gen(cfg, m, "SIM", TS, g) for g in range(gens)]
+    def _blocks(self, cfg=None):
+        cfg = cfg or small_cfg(generations=4, episodes=3)
+        m = market_for(cfg)
+        sessions = m.sessions("SIM")
+        plan = plan_from_config(cfg.generations, cfg.episodes, cfg.holdout_windows,
+                                cfg.reselect_windows, cfg.reselect_final_windows,
+                                cfg.episode_spacing)
+        return cfg, m, sessions, plan, [
+            windows_for_gen(cfg, m, "SIM", sessions, g, plan.search)
+            for g in range(cfg.generations)
+        ]
 
     def test_consecutive_generations_do_not_share_windows(self):
-        _, blocks = self._blocks()
+        _, _, _, _, blocks = self._blocks()
         for a, b in zip(blocks, blocks[1:]):
             sa = {bars[0].ts for bars in a}
             sb = {bars[0].ts for bars in b}
@@ -151,37 +159,41 @@ class TestWindowRotation(unittest.TestCase):
     def test_windows_shared_within_a_generation(self):
         # Every genome in a generation is handed the same list object, so fitness
         # is comparable and the search is not measuring the market.
-        _, blocks = self._blocks(gens=1)
-        self.assertEqual(len(blocks[0]), 3)
+        self.assertEqual(len(self._blocks()[4][0]), 3)
 
     def test_window_count_per_generation(self):
-        _, blocks = self._blocks(episodes=5)
+        cfg = small_cfg(episodes=5)
+        blocks = self._blocks(cfg)[4]
         self.assertEqual(len(blocks[0]), 5)
 
+    def test_every_window_is_one_session(self):
+        # The point of session-space windows: a window can never straddle an
+        # overnight gap, so the old silent-short-window failure is unrepresentable.
+        cfg, m, sessions, _, blocks = self._blocks()
+        for gen_blocks in blocks:
+            for bars in gen_blocks:
+                self.assertEqual(len(bars), cfg.bars)
+                start = bars[0].ts
+                self.assertIn(start, [s for s, _ in sessions])
+
     def test_stride_prevents_overlap_by_default(self):
-        # window_stride defaults to episodes * episode_spacing, so blocks cannot
-        # bleed into one another unless explicitly overridden.
-        cfg = Config(episodes=3, bars=100, episode_spacing=900)
-        self.assertEqual(cfg.window_stride, 0)
-        _, blocks = self._blocks(gens=2, episodes=3)
-        ends = [b[-1][-1].ts for b in blocks]
-        self.assertLess(ends[0], blocks[1][0][0].ts)
+        cfg = small_cfg()
+        self.assertEqual(cfg.window_stride, 0)   # 0 -> derived as episodes*spacing
 
 
 class TestHistoryAccumulation(unittest.TestCase):
     def test_surviving_genome_gains_evidence(self):
-        cfg = Config(population=6, generations=4, episodes=2, bars=180,
-                     decide_every=4, seed=5)
-        reports, _ = run(cfg, market=SimulatedMarket(seed=1234),
+        cfg = small_cfg(population=6, generations=4, episodes=2, decide_every=4, seed=5)
+        reports, _ = run(cfg, market=market_for(cfg),
                          decisioner=RulesDecisioner())
         counts = [len(r.episodes) for r in reports[-1].records]
         self.assertGreater(max(counts), cfg.episodes,
                            f"no genome accumulated history: {counts}")
 
     def test_history_is_bounded(self):
-        cfg = Config(population=6, generations=5, episodes=2, bars=150,
-                     decide_every=4, seed=5, max_history=4)
-        reports, _ = run(cfg, market=SimulatedMarket(seed=1234),
+        cfg = small_cfg(population=6, generations=5, episodes=2, decide_every=4,
+                        seed=5, max_history=4)
+        reports, _ = run(cfg, market=market_for(cfg),
                          decisioner=RulesDecisioner())
         for rec in reports[-1].records:
             self.assertLessEqual(len(rec.episodes), 4)
@@ -194,46 +206,44 @@ class TestHistoryAccumulation(unittest.TestCase):
 
 
 class TestReselect(unittest.TestCase):
+    def _call(self, cands, cfg=None):
+        cfg = cfg or small_cfg(decide_every=4, seed=3)
+        m = market_for(cfg)
+        sessions = m.sessions("SIM")
+        plan = plan_from_config(cfg.generations, cfg.episodes, cfg.holdout_windows,
+                                cfg.reselect_windows, cfg.reselect_final_windows,
+                                cfg.episode_spacing)
+        return reselect(cands, cfg, RulesDecisioner(), m, "SIM", sessions, plan,
+                        cfg.reselect_windows, cfg.reselect_final_windows)
+
     def test_rejects_empty(self):
         with self.assertRaises(ValueError):
-            reselect([], Config(), RulesDecisioner(), SimulatedMarket(), "SIM", 4)
+            self._call([])
 
     def test_single_candidate_short_circuits(self):
         g = Genome()
-        win, table = reselect([g], Config(bars=60), RulesDecisioner(),
-                              SimulatedMarket(seed=1), "SIM", 4)
+        win, table = self._call([g])
         self.assertIs(win, g)
         self.assertEqual(len(table), 1)
 
     def test_returns_a_valid_winner_from_the_finalists(self):
         # Stage 1 shortlists, stage 2 decides among the finalists. The table
         # therefore reports the finalists, not the whole field.
-        cfg = Config(bars=240, decide_every=3, episodes=2, episode_spacing=900,
-                     seed=3, reselect_finalists=3)
-        winner, table = reselect(hand_seeded()[:5], cfg, RulesDecisioner(),
-                                 SimulatedMarket(seed=1234), "SIM", 8)
+        winner, table = self._call(hand_seeded()[:5])
         self.assertTrue(winner.valid)
         self.assertEqual(len(table), 3)
 
     def test_finalists_widens_with_config(self):
-        cfg = Config(bars=180, decide_every=4, seed=3, reselect_finalists=4)
-        _, table = reselect(hand_seeded()[:5], cfg, RulesDecisioner(),
-                            SimulatedMarket(seed=1234), "SIM", 4)
+        _, table = self._call(hand_seeded()[:5],
+                              small_cfg(decide_every=4, seed=3, reselect_finalists=4))
         self.assertEqual(len(table), 4)
 
     def test_result_is_stable(self):
-        cfg = Config(bars=180, decide_every=4, seed=3)
         cands = hand_seeded()[:4]
-        a, _ = reselect(cands, cfg, RulesDecisioner(),
-                        SimulatedMarket(seed=1234), "SIM", 4)
-        b, _ = reselect(cands, cfg, RulesDecisioner(),
-                        SimulatedMarket(seed=1234), "SIM", 4)
-        self.assertEqual(a.id, b.id)
+        self.assertEqual(self._call(cands)[0].id, self._call(cands)[0].id)
 
     def test_table_sorted_by_return(self):
-        cfg = Config(bars=150, decide_every=4, seed=3)
-        _, table = reselect(hand_seeded()[:4], cfg, RulesDecisioner(),
-                            SimulatedMarket(seed=1234), "SIM", 4)
+        _, table = self._call(hand_seeded()[:4])
         rets = [r for _, r, _ in table]
         self.assertEqual(rets, sorted(rets, reverse=True))
 
@@ -249,12 +259,15 @@ class TestLongerRunsDoNotDegrade(unittest.TestCase):
     SEEDS = (11, 47, 313)
 
     def _winner_return(self, gens, seed):
-        cfg = Config(population=10, generations=gens, episodes=3, bars=300,
-                     seed=seed, market_seed=1234)
-        _, best = run(cfg, market=SimulatedMarket(seed=cfg.market_seed),
-                      decisioner=RulesDecisioner())
-        return holdout(best, cfg, RulesDecisioner(), market_seed=987654,
-                       n_windows=8, market=SimulatedMarket(seed=987654)).ret
+        cfg = small_cfg(population=10, generations=gens, episodes=3,
+                        decide_every=3, seed=seed)
+        m = market_for(cfg)
+        _, best = run(cfg, market=m, decisioner=RulesDecisioner())
+        plan = plan_from_config(cfg.generations, cfg.episodes, cfg.holdout_windows,
+                                cfg.reselect_windows, cfg.reselect_final_windows,
+                                cfg.episode_spacing)
+        return holdout(best, cfg, RulesDecisioner(), m, "SIM",
+                       m.sessions("SIM"), plan.holdout, plan.spacing).ret
 
     def test_ten_generations_no_worse_than_one(self):
         deltas = [self._winner_return(10, s) - self._winner_return(1, s)
@@ -271,14 +284,14 @@ class TestCooldownIsEnforced(unittest.TestCase):
     def test_policy_cooldown_limits_reentry(self):
         # cooldown_bars was evolved but never read, so the search was free to
         # mutate a gene with no effect on behaviour.
-        from hive.evolution import run_episode
+        from progeny.evolution import run_episode
         base = dict(style="momentum", lookback=10, entry_threshold=0.05,
                     exit_threshold=0.02, stop_loss=0.9, take_profit=1.8)
         slow = Genome(policy=Policy(**base, cooldown_bars=500))
         fast = Genome(policy=Policy(**base, cooldown_bars=0))
-        cfg = Config(bars=200, decide_every=3, initial_cash=10_000.0)
-        bars = SimulatedMarket(seed=1234).bars(
-            "SIM", TS, TS + timedelta(minutes=200))
+        cfg = small_cfg(bars=200, decide_every=3, initial_cash=10_000.0)
+        m = market_for(cfg)
+        bars = m.bars("SIM", *m.sessions("SIM")[0])
         a = run_episode(slow, bars, RulesDecisioner(), cfg, Gates(), GateConfig())
         b = run_episode(fast, bars, RulesDecisioner(), cfg, Gates(), GateConfig())
         self.assertLessEqual(a.n_trades, b.n_trades)
@@ -286,17 +299,15 @@ class TestCooldownIsEnforced(unittest.TestCase):
 
 class TestSystemicFailure(unittest.TestCase):
     def test_kill_switch_trips_on_mass_breach(self):
-        cfg = Config(population=10, generations=3, episodes=1, bars=200,
-                     decide_every=2, seed=2)
-        reports, _ = run(cfg, market=SimulatedMarket(seed=1234),
+        cfg = small_cfg(population=10, generations=3, episodes=1, decide_every=2, seed=2)
+        reports, _ = run(cfg, market=market_for(cfg),
                          decisioner=RulesDecisioner(),
                          gates_cfg=GateConfig(max_drawdown=0.0001))
         self.assertGreater(len(reports[-1].quarantined), 0)
 
     def test_run_completes_with_loose_gates(self):
-        cfg = Config(population=6, generations=3, episodes=1, bars=150,
-                     decide_every=3, seed=2)
-        reports, _ = run(cfg, market=SimulatedMarket(seed=1234),
+        cfg = small_cfg(population=6, generations=3, episodes=1, decide_every=3, seed=2)
+        reports, _ = run(cfg, market=market_for(cfg),
                          decisioner=RulesDecisioner(),
                          gates_cfg=GateConfig(max_drawdown=0.99))
         self.assertEqual(len(reports), 3)
@@ -307,49 +318,65 @@ class TestSymbolIsHonoured(unittest.TestCase):
     column read anything else silently evaluated nothing at all and every genome
     pinned at the inactivity penalty."""
 
-    def _csv(self, tmpdir: str) -> str:
+    def _csv(self, tmpdir: str, days: int = 10) -> str:
+        """A session-shaped file: 390 bars a day, 09:30-16:00, weekdays only.
+
+        Walks calendar days and skips weekends by *filtering*, not by advancing a
+        cursor. Advancing a cursor collides with itself: skipping Saturday to
+        Monday lands on a date a later index reaches naturally.
+        """
         import os
         path = os.path.join(tmpdir, "bars.csv")
-        base = datetime(2026, 1, 5, 14, 30)
-        rows = ["ts,open,high,low,close,volume,symbol"]
+        rows = ["symbol,ts,open,high,low,close,volume"]
+        base = datetime(2026, 1, 5)
+        cal = [base + timedelta(days=i) for i in range(60)]
+        cal = [d for d in cal if d.weekday() < 5][:days]
         px = 100.0
-        for i in range(240):
-            px *= 1.0 + (0.0016 if i % 9 < 6 else -0.0004)
-            rows.append(
-                f"{(base + timedelta(minutes=i)).isoformat()},"
-                f"{px:.4f},{px*1.002:.4f},{px*0.998:.4f},{px:.4f},100000,SPY"
-            )
+        for d in cal:
+            for i in range(390):
+                px *= 1.0 + (0.0016 if i % 9 < 6 else -0.0004)
+                ts = datetime(d.year, d.month, d.day, 9, 30) + timedelta(minutes=i)
+                rows.append(
+                    f"SPY,{ts.isoformat()},{px:.4f},{px*1.002:.4f},"
+                    f"{px*0.998:.4f},{px:.4f},100000"
+                )
         with open(path, "w") as fh:
+            fh.write("# provenance: test fixture\n")
             fh.write("\n".join(rows) + "\n")
         return path
 
     def test_matching_symbol_resolves_bars_and_trades(self):
         import tempfile
-        from hive.market import FileMarket
+        from progeny.market import FileMarket
         with tempfile.TemporaryDirectory() as tmp:
             path = self._csv(tmp)
             mkt = FileMarket(path)
-            self.assertTrue(mkt.bars("SPY", datetime(2026, 1, 5, 14, 30),
-                                     datetime(2026, 1, 5, 18, 0)))
-            self.assertEqual(mkt.bars("NOPE", datetime(2026, 1, 5, 14, 30),
-                                      datetime(2026, 1, 5, 18, 0)), [])
-            cfg = Config(population=4, generations=1, episodes=1, bars=200,
-                         decide_every=3)
+            self.assertGreaterEqual(len(mkt.sessions("SPY")), 7)
+            self.assertEqual(mkt.bars("NOPE", datetime.min, datetime.max), [])
+            cfg = small_cfg(population=4, generations=1, episodes=1,
+                            reselect_windows=1, reselect_final_windows=1,
+                            holdout_windows=1, decide_every=3)
             reports, _ = run(cfg, market=mkt, decisioner=RulesDecisioner(),
                              symbol="SPY")
         self.assertGreater(max(r.fitness.trades for r in reports[0].records), 0)
 
-    def test_wrong_symbol_yields_no_bars_and_no_trades(self):
+    def test_wrong_symbol_raises_instead_of_scoring_zero(self):
+        """The whole point of fail-loud.
+
+        A symbol absent from the file used to yield no bars, every genome scored
+        the inactivity penalty, and the run reported a confident result derived
+        from nothing. Now it raises.
+        """
         import tempfile
-        from hive.market import FileMarket
+        from progeny.market import FileMarket, WindowUnavailable
         with tempfile.TemporaryDirectory() as tmp:
             path = self._csv(tmp)
-            cfg = Config(population=4, generations=1, episodes=1, bars=200,
-                         decide_every=3)
-            reports, _ = run(cfg, market=FileMarket(path),
-                             decisioner=RulesDecisioner(), symbol="NOPE")
-        for rec in reports[0].records:
-            self.assertEqual(rec.fitness.trades, 0)
+            cfg = small_cfg(population=4, generations=1, episodes=1,
+                            reselect_windows=1, reselect_final_windows=1,
+                            holdout_windows=1, decide_every=3)
+            with self.assertRaises(WindowUnavailable):
+                run(cfg, market=FileMarket(path),
+                    decisioner=RulesDecisioner(), symbol="NOPE")
 
 
 class TestFitnessHitRate(unittest.TestCase):

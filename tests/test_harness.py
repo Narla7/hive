@@ -6,14 +6,16 @@
 import unittest
 from datetime import datetime, timedelta
 
-from hive.broker import BrokerConfig, PaperBroker
-from hive.decisioners import AgentState, RulesDecisioner
-from hive.evolution import Config, holdout, run, run_episode
-from hive.fitness import Episode, evaluate, effective_n, max_drawdown
-from hive.gates import GateConfig, Gates
-from hive.genome import Genome, Policy, crossover, hand_seeded, mutate, random_genome
-from hive.ledger import CASH, FEES, INFERENCE, POSITION, REALIZED, Ledger, Posting
-from hive.market import Bar, SimulatedMarket
+from progeny.broker import BrokerConfig, PaperBroker
+from progeny.decisioners import AgentState, RulesDecisioner
+from progeny.evolution import Config, holdout, run, run_episode
+from progeny.fitness import Episode, evaluate, effective_n, max_drawdown
+from progeny.gates import GateConfig, Gates
+from progeny.genome import Genome, Policy, crossover, hand_seeded, mutate, random_genome
+from progeny.ledger import CASH, FEES, INFERENCE, POSITION, REALIZED, Ledger, Posting
+from progeny.market import Bar, SimulatedMarket
+from progeny.sessions import plan_from_config
+from tests.support import market_for, small_cfg
 
 TS = datetime(2026, 1, 5, 14, 30)
 
@@ -319,22 +321,22 @@ class TestDecisioner(unittest.TestCase):
 
 
 class TestEpisodeAndLoop(unittest.TestCase):
-    def _window(self, seed=1234, bars=400):
-        m = SimulatedMarket(seed=seed)
-        return m.bars("SIM", TS, TS + timedelta(minutes=bars))
+    def _window(self, seed=1234):
+        """One full session."""
+        m = SimulatedMarket(seed=seed, n_days=2)
+        return m.bars("SIM", *m.sessions("SIM")[0])
 
     def test_episode_runs_and_balances(self):
-        cfg = Config(bars=400, decide_every=3)
-        led_holder = []
+        cfg = small_cfg(decide_every=3)
         ep = run_episode(hand_seeded()[0], self._window(), RulesDecisioner(),
                          cfg, Gates(GateConfig()), GateConfig())
         self.assertGreater(ep.n_evals, 0)
-        self.assertEqual(len(ep.equity_curve), 401)
+        self.assertEqual(len(ep.equity_curve), cfg.bars + 1)
         self.assertGreater(ep.turnover, 0.0)
         self.assertGreater(ep.n_trades, 0)
 
     def test_episode_is_deterministic(self):
-        cfg = Config(bars=300, decide_every=3)
+        cfg = small_cfg(decide_every=3)
         w = self._window()
         a = run_episode(hand_seeded()[0], w, RulesDecisioner(), cfg, Gates(), GateConfig())
         b = run_episode(hand_seeded()[0], w, RulesDecisioner(), cfg, Gates(), GateConfig())
@@ -342,54 +344,39 @@ class TestEpisodeAndLoop(unittest.TestCase):
         self.assertEqual(a.n_trades, b.n_trades)
 
     def test_session_ends_flat(self):
-        cfg = Config(bars=300, decide_every=3)
+        cfg = small_cfg(decide_every=3)
         ep = run_episode(hand_seeded()[0], self._window(), RulesDecisioner(),
                          cfg, Gates(), GateConfig())
         self.assertAlmostEqual(ep.equity_curve[-1], 10_000.0 + ep.pnl, places=4)
 
     def test_loop_returns_valid_winner(self):
-        cfg = Config(population=8, generations=5, episodes=3, bars=300)
-        reports, best = run(cfg)
+        cfg = small_cfg(population=8, generations=5, episodes=3)
+        reports, best = run(cfg, market=market_for(cfg),
+                            decisioner=RulesDecisioner())
         self.assertTrue(best.valid)
         self.assertEqual(len(reports), 5)
 
     def _skipped_duplicate(self):
-        """The claim the loop actually has to defend.
+        """Superseded by tests/test_search.py::TestLongerRunsDoNotDegrade, which
+        asserts the same guarantee across several seeds. Kept as a pointer."""
 
-        Mean fitness across generations is no longer a valid progress measure:
-        each generation scores a fresh block of windows, so generation 10 is not
-        measured on the same data as generation 0 and the mean cannot be expected
-        to rise. The meaningful question is whether running longer makes the
-        *winner* worse, and it used to: selecting the argmax of in-sample fitness
-        is a winner's curse, and a 20-generation run produced a worse holdout
-        winner than a 1-generation run.
-        """
-        def winner_return(gens):
-            cfg = Config(population=10, generations=gens, episodes=3, bars=300,
-                         seed=23, market_seed=1234)
-            _, best = run(cfg, market=SimulatedMarket(seed=cfg.market_seed),
-                          decisioner=RulesDecisioner())
-            h = holdout(best, cfg, RulesDecisioner(), market_seed=987654, n_windows=8)
-            return h.ret
-
-        short = winner_return(1)
-        long = winner_return(10)
-        # Measured: 1 gen +9.6%, 10 gen +9.6%. Allow a little slack for the
-        # stochastic objective, but a real regression (which was -1.1pp of mean
-        # and far worse on worst-case) must still fail this.
-        self.assertGreaterEqual(long, short - 0.03)
-
-    def test_holdout_runs_on_unseen_seed(self):
-        cfg = Config(bars=300, episodes=2)
-        h = holdout(hand_seeded()[0], cfg, RulesDecisioner(), market_seed=987654, n_windows=2)
-        self.assertEqual(h.n_windows, 2)
+    def test_holdout_uses_disjoint_sessions_from_the_same_file(self):
+        cfg = small_cfg(episodes=2)
+        m = market_for(cfg)
+        sessions = m.sessions("SIM")
+        plan = plan_from_config(cfg.generations, cfg.episodes, cfg.holdout_windows,
+                                cfg.reselect_windows, cfg.reselect_final_windows,
+                                cfg.episode_spacing)
+        h = holdout(hand_seeded()[0], cfg, RulesDecisioner(), m, "SIM",
+                    sessions, plan.holdout, plan.spacing)
+        self.assertEqual(h.n_windows, len(plan.holdout) // plan.spacing)
         self.assertGreater(h.trades, 0)
 
     def test_run_does_not_mutate_input_genomes(self):
-        cfg = Config(population=6, generations=3, episodes=2, bars=200)
+        cfg = small_cfg(population=6, generations=3, episodes=2)
         pop = hand_seeded()
         before = [g.policy.stop_loss for g in pop]
-        run(cfg)
+        run(cfg, market=market_for(cfg), decisioner=RulesDecisioner())
         self.assertEqual([g.policy.stop_loss for g in pop], before)
 
 

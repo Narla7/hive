@@ -25,7 +25,8 @@ from .fitness import Episode, Fitness, evaluate, max_drawdown
 from .gates import GateConfig, Gates, GateVerdict
 from .genome import Genome, crossover, hand_seeded, mutate, random_genome
 from .ledger import Ledger
-from .market import Bar, Market, SimulatedMarket
+from .market import Bar, Market, SimulatedMarket, WindowUnavailable
+from .sessions import SessionPlan, SessionSpan, plan_from_config
 
 
 @dataclass(slots=True)
@@ -33,8 +34,10 @@ class Config:
     population: int = 12
     generations: int = 8
     episodes: int = 3               # per genome, per generation
-    episode_spacing: int = 900      # bars between each episode's market window
-    bars: int = 720                 # one day of minute bars
+    # Session-space, not minutes. A regular US session is 390 bars, so the old
+    # 720-bar/900-minute defaults made every window straddle an overnight gap.
+    episode_spacing: int = 2        # sessions between episode windows
+    bars: int = 390                 # one trading session
     elite: int = 3
     novelty_frac: float = 0.10      # fresh genomes per generation
     # UCB exploration constant. Raised from 0.35: fitness is a noisy estimate, so
@@ -54,6 +57,8 @@ class Config:
     # overlapping data and the "fresh" windows are not fresh.
     window_stride: int = 0          # 0 -> derived as episodes * episode_spacing
     max_history: int = 12           # episodes retained per genome
+    holdout_windows: int = 30       # windows in the reported holdout
+    symbol: str = "SIM"
     # Fraction of the population that must breach a gate in one generation
     # before the kill switch fires. Per-genome gates protect against individual
     # blowups; nothing protects against a regime change that fails everyone.
@@ -75,7 +80,7 @@ class Config:
     # cheap wide pass shortlists, then a narrow, much larger pass decides.
     reselect_windows: int = 24
     reselect_finalists: int = 3
-    reselect_final_windows: int = 60
+    reselect_final_windows: int = 40
     # How many hand-written seeds may be re-injected across the whole run. The
     # seeds are a real prior; letting them disappear means the search can only
     # drift away from them.
@@ -92,6 +97,19 @@ class Record:
     generation: int
     fitness: Fitness
     episodes: list[Episode] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class BuyAndHold:
+    """What simply owning the asset over the same sessions returns.
+
+    Without this, a long-only result is uninterpretable. A strategy that made
+    +67% on a span where the asset rose 67% has demonstrated nothing at all, and
+    there is no way to tell the two cases apart from the strategy's own numbers.
+    """
+    ret: float
+    windows: int
+    up_windows: int
 
 
 @dataclass(slots=True)
@@ -301,65 +319,114 @@ def allocate(
     return alloc
 
 
+def buy_and_hold(
+    market: Market,
+    symbol: str,
+    sessions: list[tuple[datetime, datetime]],
+    span: SessionSpan,
+    spacing: int = 2,
+) -> BuyAndHold:
+    """Return of simply holding the asset across the same sessions."""
+    n = len(span) // max(1, spacing)
+    rets: list[float] = []
+    for k in range(n):
+        idx = span.lo + k * spacing
+        start, end = sessions[idx]
+        bars = market.bars(symbol, start, end)
+        if len(bars) >= 2:
+            rets.append(bars[-1].close / bars[0].close - 1.0)
+    if not rets:
+        return BuyAndHold(0.0, 0, 0)
+    return BuyAndHold(sum(rets) / len(rets), len(rets), sum(1 for r in rets if r > 0))
+
+
 def holdout(
     genome: Genome,
     cfg: Config,
     decisioner: Decisioner,
-    market_seed: int,
-    n_windows: int = 5,
-    symbol: str = "SIM",
-    market: Market | None = None,
-    start: datetime | None = None,
+    market: Market,
+    symbol: str,
+    sessions: list[tuple[datetime, datetime]],
+    span: SessionSpan,
+    spacing: int = 2,
 ) -> Holdout:
-    """Score a genome on price paths it was never selected on.
+    """Score a genome on sessions nothing selected on.
 
-    `market` defaults to a fresh SimulatedMarket, which is right for the
-    simulated case. When the caller is already trading a real data file, it must
-    be passed in: the out-of-sample half of the experiment has to come from the
-    same distribution as the in-sample half, or it is testing something else
-    entirely.
+    The market and session list are the same ones the search used. Constructing a
+    fresh `SimulatedMarket` here was a real bug: under `--data` the out-of-sample
+    half of the experiment then tested a synthetic series unrelated to the file
+    being traded.
     """
-    if market is None:
-        market = SimulatedMarket(seed=market_seed)   # different seed, unseen path
-    start = start or datetime(2026, 3, 2, 14, 30)
+    n_windows = len(span) // max(1, spacing)
+    blocks = _windows_at(market, symbol, sessions, span, spacing, n_windows, cfg.bars)
     gates = Gates(GateConfig())
-    eps = []
-    for i in range(n_windows):
-        w = market.bars(
-            symbol,
-            start + timedelta(minutes=i * cfg.episode_spacing),
-            start + timedelta(minutes=i * cfg.episode_spacing + cfg.bars),
-        )
-        eps.append(run_episode(genome, w, decisioner, cfg, gates, GateConfig(), symbol))
+    eps = [run_episode(genome, w, decisioner, cfg, gates, GateConfig(), symbol)
+           for w in blocks]
     fit = evaluate(eps, cfg.initial_cash)
     return Holdout(
         fitness=fit,
         ret=sum(e.pnl for e in eps) / cfg.initial_cash,
         pnl=sum(e.pnl for e in eps),
         trades=sum(e.n_trades for e in eps),
-        n_windows=n_windows,
+        n_windows=len(eps),
     )
 
 
 def windows_for_gen(
-    cfg: Config, market: Market, symbol: str, start: datetime, gen: int
+    cfg: Config, market: Market, symbol: str, sessions: list[tuple[datetime, datetime]],
+    gen: int, span: SessionSpan,
 ) -> list[list[Bar]]:
     """The block of price windows generation `gen` is scored on.
 
-    Extracted so the anti-overfitting property is directly testable: consecutive
-    generations must not share windows, and every genome within a generation
-    must see the same set.
+    Addressed in session space. Two properties matter and are tested directly:
+
+      - consecutive generations never share a window, so accumulated history
+        carries new information instead of re-measuring the same price path;
+      - every genome in a generation is handed the same list object, so fitness
+        is comparable and the search cannot end up measuring the market.
     """
     stride = cfg.window_stride or (cfg.episodes * cfg.episode_spacing)
-    base = start + timedelta(minutes=gen * stride)
-    return [
-        market.bars(
-            symbol,
-            base + timedelta(minutes=i * cfg.episode_spacing),
-            base + timedelta(minutes=i * cfg.episode_spacing + cfg.bars),
-        )
-        for i in range(cfg.episodes)
-    ]
+    out: list[list[Bar]] = []
+    for i in range(cfg.episodes):
+        idx = gen * stride + i * cfg.episode_spacing
+        rel = idx - span.lo
+        if not 0 <= rel < len(sessions):
+            raise WindowUnavailable(
+                f"generation {gen} episode {i} wants session {idx}, outside "
+                f"the search span {span}"
+            )
+        start, end = sessions[idx]
+        bars = market.bars(symbol, start, end)
+        if len(bars) != cfg.bars:
+            raise WindowUnavailable(
+                f"session {idx} ({start.date()}) returned {len(bars)} bars, "
+                f"expected {cfg.bars}. A short window is never a shorter episode "
+                f"to shrug at: it means a gap, and the fitness would silently "
+                f"differ from every other episode."
+            )
+        out.append(bars)
+    return out
+
+
+def _windows_at(
+    market: Market, symbol: str, sessions: list[tuple[datetime, datetime]],
+    span: SessionSpan, spacing: int, count: int, expect: int,
+) -> list[list[Bar]]:
+    """Windows stepping through `span`, evenly by `spacing` sessions."""
+    out: list[list[Bar]] = []
+    for k in range(count):
+        idx = span.lo + k * spacing
+        if not 0 <= idx < len(sessions):
+            raise WindowUnavailable(f"window {k} wants session {idx}, outside {span}")
+        start, end = sessions[idx]
+        bars = market.bars(symbol, start, end)
+        if len(bars) != expect:
+            raise WindowUnavailable(
+                f"session {idx} ({start.date()}) returned {len(bars)} bars, "
+                f"expected {expect}"
+            )
+        out.append(bars)
+    return out
 
 
 def reselect(
@@ -368,7 +435,10 @@ def reselect(
     decisioner: Decisioner,
     market: Market,
     symbol: str,
-    n_windows: int,
+    sessions: list[tuple[datetime, datetime]],
+    plan: SessionPlan,
+    n_coarse: int,
+    n_final: int,
 ) -> tuple[Genome, list[tuple[str, float, float]]]:
     """Re-run the shortlist on fresh windows and pick the real winner.
 
@@ -387,33 +457,30 @@ def reselect(
     if len(shortlist) == 1:
         return shortlist[0], [(shortlist[0].id, 0.0, 0.0)]
 
-    # Windows far past anything the search used, so no overlap with the search.
-    coarse_start = datetime(2027, 1, 4, 14, 30)
-    # ...and a second, disjoint set for the final decision.
-    final_start = datetime(2028, 6, 5, 14, 30)
+    # Two disjoint session ranges, both outside the search span.
+    coarse_blocks = _windows_at(market, symbol, sessions, plan.coarse,
+                                 plan.spacing, n_coarse, cfg.bars)
+    final_blocks = _windows_at(market, symbol, sessions, plan.final,
+                               plan.spacing, n_final, cfg.bars)
 
-    def score(g: Genome, start: datetime, n: int) -> Fitness:
+    # Stage 1: wide and cheap. Narrows the field.
+    coarse_scores = []
+    for g in shortlist:
         gates = Gates(GateConfig())
-        eps = []
-        for i in range(n):
-            w = market.bars(
-                symbol,
-                start + timedelta(minutes=i * cfg.episode_spacing),
-                start + timedelta(minutes=i * cfg.episode_spacing + cfg.bars),
-            )
-            eps.append(run_episode(g, w, decisioner, cfg, gates, GateConfig(), symbol))
-        return evaluate(eps, cfg.initial_cash)
-
-    # Stage 1: wide and cheap. Reduces the field.
-    coarse = sorted(((score(g, coarse_start, n_windows).ret, g) for g in shortlist),
-                    key=lambda t: t[0], reverse=True)
-    finalists = [g for _, g in coarse[: max(1, cfg.reselect_finalists)]]
+        eps = [run_episode(g, w, decisioner, cfg, gates, GateConfig(), symbol)
+               for w in coarse_blocks]
+        coarse_scores.append((evaluate(eps, cfg.initial_cash).ret, g))
+    coarse_scores.sort(key=lambda t: t[0], reverse=True)
+    finalists = [g for _, g in coarse_scores[: max(1, cfg.reselect_finalists)]]
 
     # Stage 2: narrow and large. The final pick is made among few candidates on
-    # a lot of data, which is where the selection bias actually shrinks.
+    # a lot of independent data, which is where selection bias actually shrinks.
     scored = []
     for g in finalists:
-        fit = score(g, final_start, cfg.reselect_final_windows)
+        gates = Gates(GateConfig())
+        eps = [run_episode(g, w, decisioner, cfg, gates, GateConfig(), symbol)
+               for w in final_blocks]
+        fit = evaluate(eps, cfg.initial_cash)
         scored.append((fit.ret, fit.hit_rate, g))
 
     scored.sort(key=lambda t: (round(t[0], 4), t[1]), reverse=True)
@@ -424,8 +491,9 @@ def reselect(
 
 def run(cfg: Config, market: Market | None = None, decisioner: Decisioner | None = None,
         gates_cfg: GateConfig | None = None,
-        symbol: str = "SIM",
-        on_generation: "Callable[[GenerationReport], bool] | None" = None
+        symbol: str | None = None,
+        on_generation: "Callable[[GenerationReport], bool] | None" = None,
+        plan: SessionPlan | None = None,
         ) -> tuple[list[GenerationReport], Genome]:
     """Run the whole loop. Returns per-generation reports and the best genome.
 
@@ -440,8 +508,20 @@ def run(cfg: Config, market: Market | None = None, decisioner: Decisioner | None
     assert decisioner is not None, "no decisioner for model %r" % cfg.model
     market = market or SimulatedMarket(seed=cfg.market_seed)
     gates = Gates(gates_cfg or GateConfig())
+    symbol = symbol or cfg.symbol
 
-    start = datetime(2026, 1, 5, 14, 30)
+    # Windows come from the sessions the data actually contains, and the span
+    # the configuration needs is checked before the loop starts. Discovering the
+    # dataset is too short 50 generations in wastes the whole run and, worse,
+    # leaves a partial result that looks complete.
+    sessions = market.sessions(symbol)
+    if not sessions:
+        raise WindowUnavailable(f"no sessions for symbol {symbol!r} in {market!r}")
+    plan = plan or plan_from_config(
+        cfg.generations, cfg.episodes, cfg.holdout_windows,
+        cfg.reselect_windows, cfg.reselect_final_windows, cfg.episode_spacing,
+    )
+    plan.validate(len(sessions))
 
     population = hand_seeded()[: cfg.population]
     while len(population) < cfg.population:
@@ -474,7 +554,7 @@ def run(cfg: Config, market: Market | None = None, decisioner: Decisioner | None
         # information -- with a deterministic decisioner the extra episodes are
         # literally the same number again -- and the search converges on fitting
         # those particular paths rather than on the strategy space.
-        windows = windows_for_gen(cfg, market, symbol, start, gen)
+        windows = windows_for_gen(cfg, market, symbol, sessions, gen, plan.search)
 
         # Gen 0 is uniform: there is no history to be clever with yet. After
         # that, UCB redistributes a constant episode budget.
@@ -560,9 +640,13 @@ def run(cfg: Config, market: Market | None = None, decisioner: Decisioner | None
         # useful gene can still contribute, which is what keeps a search on a
         # noisy landscape from collapsing onto one basin.
         pool = [g for g in population if g.id not in gates.quarantined] or population
-        k = max(2, min(cfg.tournament, len(pool)))
+        # floor of 1, not 2: when gates quarantine nearly everyone the pool can
+        # collapse to a single genome, and sample(population, 2) raises.
+        k = max(1, min(cfg.tournament, len(pool)))
 
         def pick_parent() -> "Genome":
+            if len(pool) == 1:
+                return pool[0]
             cands = rng.sample(pool, k)
             return min(cands, key=lambda g: rank_of.get(g.id, 10 ** 6))
 
@@ -663,6 +747,7 @@ def run(cfg: Config, market: Market | None = None, decisioner: Decisioner | None
             if g.id not in have:
                 cands.append(g)
         best_genome, _table = reselect(
-            cands, cfg, decisioner, market, symbol, cfg.reselect_windows,
+            cands, cfg, decisioner, market, symbol, sessions, plan,
+            cfg.reselect_windows, cfg.reselect_final_windows,
         )
     return reports, best_genome

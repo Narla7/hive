@@ -1,7 +1,7 @@
 [project]
-name = "hive"
+name = "progeny"
 version = "0.1.0"
-description = "HIVE: an evolutionary harness for day-trading agents. Fitness is realized net P&L."
+description = "PROGENY: an evolutionary harness for day-trading agents. Fitness is realized net P&L."
 requires-python = ">=3.11"
 dependencies = []
 
@@ -9,7 +9,7 @@ dependencies = []
 dev = []
 
 [project.scripts]
-hive = "hive.cli:main"
+progeny = "progeny.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

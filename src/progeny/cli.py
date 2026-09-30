@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 from .decisioners import LLMDecisioner, RulesDecisioner
-from .evolution import Config, holdout, run
+from .evolution import Config, buy_and_hold, holdout, run
+from .sessions import plan_from_config
 from .gates import GateConfig
 from .genome import Genome
 from .market import FileMarket, SimulatedMarket
@@ -16,13 +17,23 @@ from .market import FileMarket, SimulatedMarket
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="hive",
+        prog="progeny",
         description="Evolutionary harness for day-trading agents.",
     )
     p.add_argument("--population", type=int, default=12)
     p.add_argument("--generations", type=int, default=8)
     p.add_argument("--episodes", type=int, default=3)
-    p.add_argument("--bars", type=int, default=720, help="minutes of data per episode")
+    p.add_argument("--bars", type=int, default=390,
+                   help="bars per window; one regular US session is 390")
+    p.add_argument("--episode-spacing", type=int, default=2,
+                   help="sessions between episode windows. 1 is cheaper but "
+                        "adjacent sessions are correlated, so 2 is the honest floor")
+    p.add_argument("--holdout-windows", type=int, default=30,
+                   help="windows in the reported holdout, from a disjoint range")
+    p.add_argument("--reselect-windows", type=int, default=24,
+                   help="wide cheap pass that narrows the shortlist")
+    p.add_argument("--reselect-final-windows", type=int, default=40,
+                   help="narrow pass that picks the winner among the finalists")
     p.add_argument("--cash", type=float, default=10_000.0)
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--market-seed", type=int, default=1234)
@@ -39,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
              "OpenAI-compatible endpoint",
     )
     g.add_argument("--base-url", default=None, help="e.g. https://opencode.ai/zen/v1")
-    g.add_argument("--api-key", default=None, help="or set HIVE_API_KEY")
+    g.add_argument("--api-key", default=None, help="or set PROGENY_API_KEY")
     g.add_argument(
         "--provider", default="openai", choices=["openai", "anthropic"],
     )
@@ -87,6 +98,11 @@ def main(argv: list[str] | None = None) -> int:
         initial_cash=args.cash,
         decide_every=args.decide_every,
         model=args.model,
+        episode_spacing=args.episode_spacing,
+        holdout_windows=args.holdout_windows,
+        reselect_windows=args.reselect_windows,
+        reselect_final_windows=args.reselect_final_windows,
+        symbol=args.symbol,
     )
     gates_cfg = GateConfig(max_drawdown=args.max_drawdown)
 
@@ -144,8 +160,12 @@ def main(argv: list[str] | None = None) -> int:
     cfg.max_calls_per_epoch = args.max_calls_per_epoch
 
     if not args.quiet:
+        source = "REAL (--data)" if args.data else "SYNTHETIC (--market-seed)"
         print(f"model={args.model} pop={cfg.population} gens={cfg.generations} "
               f"episodes={cfg.episodes} bars={cfg.bars} cash={cfg.initial_cash:,.0f}")
+        print(f"data={source}  sessions={len(market.sessions(args.symbol))}")
+        if not args.data:
+            print("  NOTE: synthetic prices. Returns say nothing about real markets.")
         print("-" * 78)
 
     reports, best = run(
@@ -189,29 +209,37 @@ def main(argv: list[str] | None = None) -> int:
 
     hold = None
     if not args.no_holdout:
-        # Pass the same market in. With --data that means the out-of-sample half
-        # comes from the same distribution as the in-sample half; without this
-        # the holdout quietly tested a synthetic market unrelated to the CSV.
-        hold = holdout(
-            best, cfg, decisioner,
-            market_seed=cfg.market_seed + 9999,
-            symbol=args.symbol,
-            market=None if args.data else market,
+        # Same file, same sessions, disjoint range. The holdout used to build a
+        # fresh SimulatedMarket, so under --data it was testing a synthetic
+        # series unrelated to the CSV.
+        sessions = market.sessions(args.symbol)
+        plan = plan_from_config(
+            cfg.generations, cfg.episodes, cfg.holdout_windows,
+            cfg.reselect_windows, cfg.reselect_final_windows, cfg.episode_spacing,
         )
+        hold = holdout(best, cfg, decisioner, market, args.symbol, sessions,
+                       plan.holdout, plan.spacing)
+        bh = buy_and_hold(market, args.symbol, sessions, plan.holdout, plan.spacing)
 
     if not args.quiet:
         print("-" * 78)
         print(f"mean fitness: {early:.4f} -> {late:.4f}  (first/last third)  [{verdict}]")
         if hold:
             ins = reports[-1].best.fitness.ret if reports else 0.0
-            print(f"holdout (unseen market seed, {hold.n_windows} windows):")
-            print(f"  in-sample ret  {ins:+.2%}")
-            print(f"  holdout ret    {hold.ret:+.2%}   pnl {hold.pnl:+,.2f}  "
+            src = "committed bars" if args.data else "synthetic, disjoint sessions"
+            print(f"holdout ({src}, {hold.n_windows} windows, disjoint in time):")
+            print(f"  in-sample ret      {ins:+.2%}")
+            print(f"  holdout ret        {hold.ret:+.2%}   pnl {hold.pnl:+,.2f}  "
                   f"trades {hold.trades}  shrunk {hold.fitness.fitness:.4f}")
-            if ins > 0 and hold.ret <= 0:
+            print(f"  buy-and-hold       {bh.ret:+.2%}   "
+                  f"({bh.up_windows}/{bh.windows} windows up)")
+            if hold.ret > 0 and hold.ret <= bh.ret:
+                print("  >> NO EDGE: the strategy did not beat simply owning it.")
+            elif ins > 0 and hold.ret <= 0:
                 print("  >> OVERFIT: profitable in-sample, not out-of-sample")
-            elif hold.ret > 0:
-                print("  >> edge survives out-of-sample")
+            elif hold.ret > bh.ret:
+                print(f"  >> beats buy-and-hold by {hold.ret - bh.ret:+.2%} "
+                      f"out-of-sample")
 
         # ---- model health, loud not silent ----
         if hasattr(decisioner, "calls"):
