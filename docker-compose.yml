@@ -14,6 +14,9 @@ services:
     # Uncomment to attach a real market-data file.
     # - ./data:/app/data:ro
 
+  # The TUI needs a real terminal: `docker compose run --rm evolve --tui`
+  # with an interactive stdin, i.e. run it without -d.
+
   test:
     build: .
     image: money-agent:latest

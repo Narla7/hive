@@ -136,6 +136,38 @@ out-earning the limit. A gate enforced by a model is a suggestion.
 There is a separate population-wide kill switch for systemic failure — a regime change
 makes every genome breach at once, so per-genome gates protect nothing in that case.
 
+## The interface
+
+```bash
+python3 -m money_agent.cli --tui
+```
+
+A full-screen curses dashboard: a skull that draws itself on start-up, the
+population as a "ritual directory", live fitness gauges, a trace sparkline, and
+a log of ominous one-liners. The loop runs on a worker thread so keys stay
+responsive during slow LLM generations.
+
+| key | effect |
+| --- | --- |
+| `q` | quit |
+| `space` | pause — the evolution loop blocks at the next generation boundary |
+| `+` / `-` | speed, 0.25× to 8× |
+| `n` | stop waiting, run to the end |
+| `s` | re-run the out-of-sample check on the current winner |
+
+Two details that are deliberate:
+
+- **The evolution loop knows nothing about curses.** It calls `on_generation`
+  and checks whether the callback wants it to stop. The loop can be driven by
+  the TUI, the CLI, or a test with equal ease.
+- **It will not claim a completed rite over a partial run.** If you quit early
+  or the run breaks, the footer says so. An earlier version cheerfully printed
+  "the rite is complete" over a population that never finished, and silently
+  skipped the holdout.
+
+Layout degrades by terminal size: a 24-row window gets a compact banner instead
+of the 12-line skull, because a 24-row terminal cannot spare 12 rows for art.
+
 ## Probing the model path
 
 ```bash

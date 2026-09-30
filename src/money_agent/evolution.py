@@ -17,6 +17,7 @@ import random
 import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Callable
 
 from .broker import BrokerConfig, PaperBroker
 from .decisioners import AgentState, CallBudget, Decisioner, RulesDecisioner
@@ -238,8 +239,15 @@ def holdout(
 
 
 def run(cfg: Config, market: Market | None = None, decisioner: Decisioner | None = None,
-        gates_cfg: GateConfig | None = None) -> tuple[list[GenerationReport], Genome]:
-    """Run the whole loop. Returns per-generation reports and the best genome."""
+        gates_cfg: GateConfig | None = None,
+        on_generation: "Callable[[GenerationReport], bool] | None" = None
+        ) -> tuple[list[GenerationReport], Genome]:
+    """Run the whole loop. Returns per-generation reports and the best genome.
+
+    `on_generation` is called after each generation. Returning False from it
+    stops the loop, which is how the TUI gets a pause and a quit key without
+    the evolution module knowing curses exists.
+    """
     rng = random.Random(cfg.seed)
     decisioner = decisioner or (
         RulesDecisioner() if cfg.model == "offline/rules" else None
@@ -380,6 +388,11 @@ def run(cfg: Config, market: Market | None = None, decisioner: Decisioner | None
             )
         )
         if gates.tripped:
+            break
+
+        # Hand control back after the report is built, so a UI sees the same
+        # data the final summary would print.
+        if on_generation is not None and not on_generation(reports[-1]):
             break
 
     return reports, best_genome

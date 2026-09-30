@@ -60,6 +60,10 @@ def build_parser() -> argparse.ArgumentParser:
     o.add_argument("--out", default=None, help="write ledger(s) and best genome here")
     o.add_argument("--quiet", action="store_true")
     o.add_argument("--no-holdout", action="store_true", help="skip out-of-sample check")
+    o.add_argument(
+        "--tui", action="store_true",
+        help="full-screen curses interface (needs a real terminal)",
+    )
     return p
 
 
@@ -87,6 +91,18 @@ def main(argv: list[str] | None = None) -> int:
     gates_cfg = GateConfig(max_drawdown=args.max_drawdown)
 
     market = FileMarket(args.data) if args.data else SimulatedMarket(seed=args.market_seed)
+
+    if args.tui:
+        if not sys.stdout.isatty():
+            print("error: --tui needs a real terminal. "
+                  "Run it directly, or drop --tui for the text report.", file=sys.stderr)
+            return 2
+        from .tui import run_tui
+        return run_tui(
+            cfg, args.model, args.api_key, args.base_url, args.provider,
+            args.data, args.symbol, gates_cfg,
+            do_holdout=not args.no_holdout,
+        )
 
     if args.model in ("offline/rules", "rules", "none"):
         decisioner = RulesDecisioner()

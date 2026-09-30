@@ -59,11 +59,28 @@ def anthropic_payload(text):
     }
 
 
+# Mocked HTTPErrors hold an open file object. Collecting and closing them in
+# tearDownModule keeps ResourceWarning noise out of the run without hiding real
+# warnings.
+_OPEN_ERRORS: list = []
+
+
 def http_error(code, body="{}"):
     def _raise(*a, **k):
-        raise urllib.error.HTTPError("u", code, "err", {}, io.BytesIO(body.encode()))
+        err = urllib.error.HTTPError("u", code, "err", {}, io.BytesIO(body.encode()))
+        _OPEN_ERRORS.append(err)
+        raise err
 
     return _raise
+
+
+def tearDownModule():
+    for err in _OPEN_ERRORS:
+        try:
+            err.close()
+        except Exception:
+            pass
+    _OPEN_ERRORS.clear()
 
 
 def make(model="big-pickle", **kw):
