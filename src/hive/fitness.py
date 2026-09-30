@@ -24,6 +24,11 @@ LAMBDA_DRAWDOWN = 1.0
 # large turnover weight double-counts them and crushes exactly the
 # lower-churn strategies that survive costs. This is a tiebreaker, not a cost.
 LAMBDA_TURNOVER = 0.0002
+# Weight on the cross-window hit rate. A genome that makes money on some price
+# paths and loses on others has an edge that is a coin flip, however good its
+# average looks. Penalising low hit rate pushes selection toward strategies whose
+# edge is *stable* across markets rather than lucky on one.
+LAMBDA_HITRATE = 0.4
 PRIOR_STRENGTH = 6.0   # k in n_eff/(n_eff + k)
 EPS = 1e-4
 # Floor on downside deviation, as a fraction of equity. Dividing by a
@@ -61,6 +66,8 @@ class Fitness:
     n_eff: float
     trades: int = 0
     n_truncated: int = 0
+    hit_rate: float = 0.0     # fraction of scored windows that made money
+    consistency: float = 0.0  # 1 - downside_dev / (mean |return|), 0..1
 
     @property
     def shrinked(self) -> bool:
@@ -146,11 +153,23 @@ def evaluate(episodes: list[Episode], initial_cash: float) -> Fitness:
     ddev = downside_dev([e.pnl / initial_cash for e in ok])
     n_eff = effective_n([e.pnl / initial_cash for e in ok])
 
+    # Hit rate across independently-scored windows. This is the cheapest
+    # available test of whether an edge is real: a genome that wins on half its
+    # windows and loses on half is not a strategy, it is a coin.
+    wins = sum(1 for e in ok if e.pnl > 0)
+    hit_rate = wins / len(ok)
+
+    # Consistency: how much of the return survives its own variance. Near 1 means
+    # windows agree with each other; near 0 means they contradict.
+    mean_abs = statistics.fmean(abs(e.pnl) / initial_cash for e in ok) if ok else 0.0
+    consistency = 0.0 if mean_abs <= 0 else max(0.0, 1.0 - ddev / mean_abs)
+
     raw = (
         ret
         - LAMBDA_COST * cost_per_eval
         - LAMBDA_DRAWDOWN * dd
         - LAMBDA_TURNOVER * turnover
+        - LAMBDA_HITRATE * (1.0 - hit_rate) * abs(ret)
     ) / (ddev + EPS)
 
     if not math.isfinite(raw):
@@ -174,4 +193,5 @@ def evaluate(episodes: list[Episode], initial_cash: float) -> Fitness:
         raw=raw, fitness=fitness, ret=ret, cost_per_eval=cost_per_eval,
         drawdown=dd, downside_dev=ddev, turnover=turnover, n=n, n_eff=n_eff,
         trades=trades, n_truncated=n_truncated,
+        hit_rate=hit_rate, consistency=consistency,
     )

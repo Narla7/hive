@@ -148,7 +148,10 @@ def main(argv: list[str] | None = None) -> int:
               f"episodes={cfg.episodes} bars={cfg.bars} cash={cfg.initial_cash:,.0f}")
         print("-" * 78)
 
-    reports, best = run(cfg, market=market, decisioner=decisioner, gates_cfg=gates_cfg)
+    reports, best = run(
+        cfg, market=market, decisioner=decisioner, gates_cfg=gates_cfg,
+        symbol=args.symbol,
+    )
 
     out = []
     for rep in reports:
@@ -186,7 +189,15 @@ def main(argv: list[str] | None = None) -> int:
 
     hold = None
     if not args.no_holdout:
-        hold = holdout(best, cfg, decisioner, market_seed=cfg.market_seed + 9999)
+        # Pass the same market in. With --data that means the out-of-sample half
+        # comes from the same distribution as the in-sample half; without this
+        # the holdout quietly tested a synthetic market unrelated to the CSV.
+        hold = holdout(
+            best, cfg, decisioner,
+            market_seed=cfg.market_seed + 9999,
+            symbol=args.symbol,
+            market=None if args.data else market,
+        )
 
     if not args.quiet:
         print("-" * 78)

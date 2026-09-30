@@ -221,7 +221,7 @@ def run_tui(cfg: Config, model: str, api_key: str | None, base_url: str | None,
             try:
                 result["out"] = run_evolution(
                     cfg, market=market, decisioner=decisioner,
-                    gates_cfg=gate_cfg, on_generation=on_gen,
+                    gates_cfg=gate_cfg, symbol=symbol, on_generation=on_gen,
                 )
             except BaseException as exc:
                 # BaseException, not Exception: a KeyboardInterrupt or other
@@ -254,7 +254,9 @@ def run_tui(cfg: Config, model: str, api_key: str | None, base_url: str | None,
             state.holdout = "consulting the other market..."
             _draw(stdscr, state, flicker)
             h = run_holdout(best, cfg, decisioner,
-                            market_seed=cfg.market_seed + 9999, n_windows=5)
+                            market_seed=cfg.market_seed + 9999, n_windows=5,
+                            symbol=symbol,
+                            market=None if data else market)
             verdict = "it survives" if h.ret > 0 else "it does not survive"
             state.holdout = f"holdout {h.ret:+.2%} -- {verdict}"
             state.holdout_done = True
