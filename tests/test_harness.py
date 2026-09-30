@@ -6,14 +6,14 @@
 import unittest
 from datetime import datetime, timedelta
 
-from money_agent.broker import BrokerConfig, PaperBroker
-from money_agent.decisioners import AgentState, RulesDecisioner
-from money_agent.evolution import Config, holdout, run, run_episode
-from money_agent.fitness import Episode, evaluate, effective_n, max_drawdown
-from money_agent.gates import GateConfig, Gates
-from money_agent.genome import Genome, Policy, crossover, hand_seeded, mutate, random_genome
-from money_agent.ledger import CASH, FEES, INFERENCE, POSITION, REALIZED, Ledger, Posting
-from money_agent.market import Bar, SimulatedMarket
+from hive.broker import BrokerConfig, PaperBroker
+from hive.decisioners import AgentState, RulesDecisioner
+from hive.evolution import Config, holdout, run, run_episode
+from hive.fitness import Episode, evaluate, effective_n, max_drawdown
+from hive.gates import GateConfig, Gates
+from hive.genome import Genome, Policy, crossover, hand_seeded, mutate, random_genome
+from hive.ledger import CASH, FEES, INFERENCE, POSITION, REALIZED, Ledger, Posting
+from hive.market import Bar, SimulatedMarket
 
 TS = datetime(2026, 1, 5, 14, 30)
 

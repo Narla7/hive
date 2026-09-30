@@ -107,8 +107,8 @@ def build_frame(state: TuiState, width: int, height: int) -> list[list[tuple[str
 
 def _header(state: TuiState, width: int, height: int) -> list[list[tuple[str, int]]]:
     dim = theme.C_BLOOD_DIM if state.dark else theme.C_BLOOD
-    title = "M O N E Y   A G E N T"
-    sub = "PROFIT RITE // EVOLUTIONARY HARNESS"
+    title = "H I V E"
+    sub = "THE SWARM // EVOLUTIONARY PROFIT MACHINE"
     rows: list[list[tuple[str, int]]] = []
     rows.append([(theme.pad("═" * width, width), dim)])
     for line in theme.art_lines(height):
@@ -121,7 +121,7 @@ def _header(state: TuiState, width: int, height: int) -> list[list[tuple[str, in
 
 def _roster(state: TuiState, width: int, height: int) -> list[list[tuple[str, int]]]:
     rows: list[list[tuple[str, int]]] = []
-    head = f" THE RITUAL DIRECTORY  gen {state.generation}/{state.total_generations} "
+    head = f" THE QUEEN  gen {state.generation}/{state.total_generations} "
     rows.append([(theme.pad(head, width), theme.C_RITUAL)])
     rows.append([(theme.pad("─" * width, width), theme.C_BLOOD_DIM)])
 

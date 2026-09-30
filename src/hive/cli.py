@@ -16,7 +16,7 @@ from .market import FileMarket, SimulatedMarket
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="money-agent",
+        prog="hive",
         description="Evolutionary harness for day-trading agents.",
     )
     p.add_argument("--population", type=int, default=12)
@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
              "OpenAI-compatible endpoint",
     )
     g.add_argument("--base-url", default=None, help="e.g. https://opencode.ai/zen/v1")
-    g.add_argument("--api-key", default=None, help="or set MA_API_KEY")
+    g.add_argument("--api-key", default=None, help="or set HIVE_API_KEY")
     g.add_argument(
         "--provider", default="openai", choices=["openai", "anthropic"],
     )

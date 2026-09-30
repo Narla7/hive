@@ -144,7 +144,7 @@ target_weight is the fraction of capital to be long (>0), short (<0), or flat (0
 # Cloudflare (in front of Zen) rejects the default `Python-urllib/x.y` agent
 # with error 1010, "access based on your browser's signature". Identify honestly
 # rather than impersonating a browser.
-USER_AGENT = "money-agent/0.1 (+https://github.com/Narla7/money-agent)"
+USER_AGENT = "hive/0.1 (+https://github.com/Narla7/hive)"
 
 
 @dataclass
@@ -224,10 +224,18 @@ class LLMDecisioner:
         self.max_bars = max_bars
         self.timeout = timeout
         self.budget = budget or CallBudget()
-        self.base_url = (base_url or os.environ.get("MA_BASE_URL", "https://openrouter.ai/api/v1")).rstrip("/")
+        # HIVE_* is canonical; MA_* is still read so existing .env files keep
+        # working after the rename.
+        self.base_url = (
+            base_url
+            or os.environ.get("HIVE_BASE_URL")
+            or os.environ.get("MA_BASE_URL")
+            or "https://openrouter.ai/api/v1"
+        ).rstrip("/")
 
         self.api_key = (
             api_key
+            or os.environ.get("HIVE_API_KEY")
             or os.environ.get("MA_API_KEY")
             or os.environ.get("OPENROUTER_API_KEY")
             or os.environ.get("OPENCODE_API_KEY")
@@ -243,7 +251,7 @@ class LLMDecisioner:
         self.last_raw = ""
         if not self.api_key:
             raise ValueError(
-                "no API key: set MA_API_KEY, OPENROUTER_API_KEY or OPENCODE_API_KEY, "
+                "no API key: set HIVE_API_KEY, OPENROUTER_API_KEY or OPENCODE_API_KEY, "
                 "or pass --api-key. Use --model offline/rules to run with no key at all."
             )
 

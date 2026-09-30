@@ -9,7 +9,7 @@ import unittest
 import urllib.error
 from unittest import mock
 
-from money_agent.decisioners import (
+from hive.decisioners import (
     AgentState,
     CallBudget,
     Decision,
@@ -18,9 +18,9 @@ from money_agent.decisioners import (
     _probe_bars,
     build_decider,
 )
-from money_agent.evolution import Config, run
-from money_agent.fitness import Episode, evaluate
-from money_agent.genome import Genome
+from hive.evolution import Config, run
+from hive.fitness import Episode, evaluate
+from hive.genome import Genome
 
 GOOD = json.dumps({"target_weight": 0.42, "reason": "momentum entry"})
 PROSE = "I think the market looks bullish so maybe go long, not sure though."
@@ -313,7 +313,7 @@ class TestTruncatedEpisodes(unittest.TestCase):
 class TestBuildDecisioner(unittest.TestCase):
     def test_offline_needs_no_key(self):
         import os
-        for k in ("MA_API_KEY", "OPENROUTER_API_KEY", "OPENCODE_API_KEY"):
+        for k in ("HIVE_API_KEY", "OPENROUTER_API_KEY", "OPENCODE_API_KEY"):
             os.environ.pop(k, None)
         self.assertIsInstance(build_decider("offline/rules"), RulesDecisioner)
         for alias in ("rules", "none"):

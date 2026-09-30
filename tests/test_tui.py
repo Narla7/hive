@@ -9,9 +9,9 @@ import random
 import threading
 import unittest
 
-from money_agent import render, theme
-from money_agent.render import TuiState, build_frame
-from money_agent.tui import Control, _roster_from
+from hive import render, theme
+from hive.render import TuiState, build_frame
+from hive.tui import Control, _roster_from
 
 
 def rows_to_text(frame):
@@ -83,8 +83,8 @@ class TestFrameShape(unittest.TestCase):
 class TestFrameContent(unittest.TestCase):
     def test_shows_sigil_and_title(self):
         text = "\n".join(rows_to_text(build_frame(populated(), 100, 40)))
-        self.assertIn("M O N E Y   A G E N T", text)
-        self.assertIn("RITUAL DIRECTORY", text)
+        self.assertIn("H I V E", text)
+        self.assertIn("THE QUEEN", text)
         self.assertIn("VITALS", text)
         self.assertIn("WHISPERS", text)
 
@@ -283,8 +283,13 @@ class TestTheme(unittest.TestCase):
         self.assertEqual(f.step(), first)  # gap not elapsed, so unchanged
 
     def test_art_fits_short_terminal(self):
-        self.assertLessEqual(len(theme.art_lines(24)), 4)
-        self.assertGreater(len(theme.art_lines(60)), 4)
+        # The HIVE banner is 5 rows, so it fits even a 24-row window. A 3-row
+        # compact variant exists for the genuinely cramped case.
+        self.assertLessEqual(len(theme.art_lines(24)), 6)
+        self.assertGreater(len(theme.art_lines(60)), 3)
+
+    def test_art_shrinks_when_cramped(self):
+        self.assertEqual(len(theme.art_lines(6)), 3)
 
     def test_ritual_lines_exist(self):
         rng = random.Random(1)

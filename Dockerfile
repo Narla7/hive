@@ -18,5 +18,5 @@ RUN useradd --create-home --shell /usr/sbin/nologin agent \
     && chown -R agent:agent /app
 USER agent
 
-ENTRYPOINT ["python", "-m", "money_agent.cli"]
+ENTRYPOINT ["python", "-m", "hive.cli"]
 CMD ["--population", "16", "--generations", "12", "--episodes", "6"]

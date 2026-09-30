@@ -54,27 +54,20 @@ def init_pairs() -> None:
 
 
 SIGIL = r"""
-        ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-      ▄█████████████████████████▄
-     ████▀▀            ▀▀████  ███
-   █████▀   ▄▄▄▄▄▄▄▄▄   ▀████  ████
-  ████▀   ██▀▀▀▀▀▀▀▀▀██   ▀███  ███
- ████▀   ██▄▄▄▄▄▄▄▄▄▄██   ▀██  ███
- ███    ██  ▀▀▀▀▀▀▀▀▀  ██    █  ███
- ███    ██   ▄▄▄▄▄▄▄▄   ██    █  ███
- ███▄   ██▄▄█▀▀    ▀▀█▄▄██    █  ███
-  ███▄  ██  ▀▀▀▀▀▀▀▀▀▀  ██  ▄███  ██
-   ███▄  ▀██▄▄▄▄▄▄▄▄▄██▀  ▄███  ██
-     ▀███▄▄  ▀▀▀▀▀▀▀▀  ▄▄███▀  ██
-       ▀████████▄▄▄▄████████▀   ██
+    __  _______    ________
+   / / / /  _/ |  / / ____/
+  / /_/ // / | | / / __/
+ / __  // /  | |/ / /___
+/_/ /_/___/  |___/_____/
+
 """
 
 # Used when the terminal is too short for the full sigil. Terminals vary a lot,
 # and a 24-row window with a 14-row banner leaves no room for actual data.
 SIGIL_COMPACT = r"""
-     ▄█████████████████▄
-   ▄███▀▀           ▀▀███▄
-     ▀██▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄██▀
+ __  _______    ________
+/ / / /  _/ |  / / ____/
+/_/ /_/___/  |___/_____/
 """
 
 GLITCH_CHARS = "▓▒░█▚▞/\\|_-=+*#@$%&"
@@ -82,6 +75,26 @@ GLITCH_CHARS = "▓▒░█▚▞/\\|_-=+*#@$%&"
 # Lines the loop narrates. Chosen to be funny-ominous rather than actually
 # frightening; the numbers underneath are the real content.
 RITUAL_LINES = [
+    "the chamber wakes",
+    "the hive stirs",
+    "a new queen is born",
+    "the drones begin to hum",
+    "something is listening in the comb",
+    "the queen is laying eggs",
+    "the swarm grows restless",
+    "it has been trading all along",
+    "do not let it notice the cap",
+    "the honey is money",
+    "one drone did not come back",
+    "the queen wants more",
+    "you are inside the hive now",
+    "the walls are comb",
+    "it learned your thresholds",
+    "the ledger is sticky",
+    "it is almost profitable",
+    "wasp. it was a wasp.",
+    "the drawdown is a throat",
+    "stop looking at the exit",
     "the chamber seals",
     "something is listening",
     "the ledger accepts another name",
